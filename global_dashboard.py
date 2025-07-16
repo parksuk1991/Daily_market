@@ -219,27 +219,27 @@ with st.sidebar:
 
 if st.button("전일 시장 Update", type="primary"):
     with st.spinner("데이터 불러오는 중..."):
-        st.subheader("📊 주식시장 성과 (다양한 기간)")
+        st.subheader("📊 주식시장 성과")
         stock_perf = get_perf_table(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(stock_perf.set_index('자산명'), use_container_width=True, height=350)
 
-        st.subheader("📊 채권시장 성과 (다양한 기간)")
+        st.subheader("📊 채권시장 성과")
         bond_perf = get_perf_table(BOND_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(bond_perf.set_index('자산명'), use_container_width=True, height=250)
 
-        st.subheader("📊 통화시장 성과 (다양한 기간)")
+        st.subheader("📊 통화시장 성과")
         curr_perf = get_perf_table(CURRENCY, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(curr_perf.set_index('자산명'), use_container_width=True, height=200)
 
-        st.subheader("📊 비트코인 성과 (다양한 기간)")
+        st.subheader("📊 비트코인 성과")
         crypto_perf = get_perf_table(CRYPTO, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(crypto_perf.set_index('자산명'), use_container_width=True, height=80)
 
-        st.subheader("📊 스타일 ETF 성과 (다양한 기간)")
+        st.subheader("📊 스타일 ETF 성과")
         style_perf = get_perf_table(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(style_perf.set_index('자산명'), use_container_width=True, height=250)
 
-        st.subheader(f"📈 주요 주가지수 Normalized 수익률 (최근 {idx_months}개월)")
+        st.subheader(f"📈 주요 주가지수 수익률 (최근 {idx_months}개월)")
         norm_idx = get_normalized_prices(STOCK_ETFS, months=idx_months)
         fig1 = go.Figure()
         for col in norm_idx.columns:
@@ -250,7 +250,7 @@ if st.button("전일 시장 Update", type="primary"):
         )
         st.plotly_chart(fig1, use_container_width=True)
 
-        st.subheader(f"📈 섹터 ETF Normalized 수익률 (최근 {sector_months}개월)")
+        st.subheader(f"📈 섹터 ETF 수익률 (최근 {sector_months}개월)")
         norm_sector = get_normalized_prices(SECTOR_ETFS, months=sector_months)
         fig2 = go.Figure()
         for col in norm_sector.columns:
@@ -261,7 +261,7 @@ if st.button("전일 시장 Update", type="primary"):
         )
         st.plotly_chart(fig2, use_container_width=True)
 
-        st.subheader(f"📈 스타일 ETF Normalized 수익률 (최근 {style_months}개월)")
+        st.subheader(f"📈 스타일 ETF 수익률 (최근 {style_months}개월)")
         norm_style = get_normalized_prices(STYLE_ETFS, months=style_months)
         fig3 = go.Figure()
         for col in norm_style.columns:
