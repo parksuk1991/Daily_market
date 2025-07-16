@@ -6,6 +6,12 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
 
+# lxml ImportError 방지
+try:
+    import lxml
+except ImportError:
+    st.error("lxml 패키지가 필요합니다. requirements.txt에 lxml을 추가하세요.")
+
 st.set_page_config(
     page_title="글로벌 시황 대시보드",
     page_icon="🌐",
@@ -60,15 +66,18 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
-# ===== Helper: 다양한 기간 성과 =====
-def get_perf_table(tickers, start, end):
+def get_perf_table(label2ticker, start, end):
+    # Download using ticker symbol, keep symbol as columns
+    tickers = list(label2ticker.values())
+    labels = list(label2ticker.keys())
     today = end
     first_date = today - timedelta(days=365*3+31)
-    df = yf.download(list(tickers.values()), start=first_date, end=today+timedelta(days=1), progress=False)['Close']
+    df = yf.download(tickers, start=first_date, end=today+timedelta(days=1), progress=False)['Close']
     if isinstance(df, pd.Series):
         df = df.to_frame()
     df = df.ffill()
-    df.columns = tickers.keys()
+    # Make sure columns are tickers (symbols)
+    df = df[tickers]  # enforce order
     last = df.index[-1]
     periods = {
         '1D': 1,
@@ -82,21 +91,28 @@ def get_perf_table(tickers, start, end):
         '3Y': 756
     }
     results = []
-    for label in df.columns:
+    for label, ticker in label2ticker.items():
         row = {}
         row['자산명'] = label
-        row['현재값'] = df[label].iloc[-1] if not np.isnan(df[label].iloc[-1]) else None
+        try:
+            series = df[ticker]
+        except Exception:
+            row['현재값'] = np.nan
+            for k in periods: row[k] = np.nan
+            results.append(row)
+            continue
+        row['현재값'] = series.iloc[-1] if not np.isnan(series.iloc[-1]) else None
         for k, val in periods.items():
             try:
                 if k == 'MTD':
-                    base = df[:last].loc[df.index.month == last.month].iloc[0][label]
+                    base = series[:last][series.index.month == last.month].iloc[0]
                 elif k == 'YTD':
-                    base = df[:last].loc[df.index.year == last.year].iloc[0][label]
+                    base = series[:last][series.index.year == last.year].iloc[0]
                 else:
-                    if len(df) > val:
-                        base = df[label].iloc[-val-1]
+                    if len(series) > val:
+                        base = series.iloc[-val-1]
                     else:
-                        base = df[label].iloc[0]
+                        base = series.iloc[0]
                 if base and row['현재값']:
                     row[k] = (row['현재값']/base - 1) * 100
                 else:
@@ -106,20 +122,24 @@ def get_perf_table(tickers, start, end):
         results.append(row)
     return pd.DataFrame(results)
 
-# ===== Helper: Normalized 수익률 =====
-def get_normalized_prices(tickers, months=6):
+def get_normalized_prices(label2ticker, months=6):
+    # Download using ticker symbol, keep symbol as columns
+    tickers = list(label2ticker.values())
+    labels = list(label2ticker.keys())
     end = datetime.now().date()
     start = end - timedelta(days=months*31)
-    df = yf.download(list(tickers.values()), start=start, end=end + timedelta(days=1), progress=False)['Close']
+    df = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
     if isinstance(df, pd.Series):
         df = df.to_frame()
     df = df.ffill()
-    df.columns = tickers.keys()
+    df = df[tickers]
     norm_df = df / df.iloc[0] * 100
+    # return DataFrame with label columns
+    norm_df.columns = [k for k in label2ticker]
     return norm_df
 
-# ===== 뉴스 헤드라인 (Colab 참고, yfinance v0.2 이상) =====
 def get_news_headlines(tickers, limit=3):
+    # (동일)
     news_list = []
     for ticker_symbol in tickers:
         ticker = yf.Ticker(ticker_symbol)
@@ -151,13 +171,14 @@ def get_news_headlines(tickers, limit=3):
         df = df.sort_values('일자', ascending=False)
     return df
 
-# ===== S&P500 Top/Bottom Movers =====
 def get_sp500_top_bottom_movers():
     # S&P500 전체 티커/섹터/시총/볼륨/종가/변동률
-    table = yf.download("^GSPC", period="2d", interval="1d", progress=False)  # S&P500 종가만
-    stocks = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+    try:
+        stocks = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+    except Exception as e:
+        st.error("S&P500 구성종목 목록을 가져오려면 인터넷 및 lxml 패키지가 필요합니다.")
+        return pd.DataFrame(), pd.DataFrame()
     tickers = stocks['Symbol'].unique().tolist()
-    # 일부 티커 예외 처리
     tickers = [t.replace('.', '-') for t in tickers]
     # 데이터 적재 (아래에서 볼륨/시가총액/변동률/종가 모두 추출)
     df = yf.download(tickers, period="5d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
@@ -189,7 +210,6 @@ def get_sp500_top_bottom_movers():
     bottom10 = movers.sort_values("전일수익률(%)", ascending=True).head(10)
     return top10, bottom10
 
-# ==== 사용자 입력 UI ====
 with st.sidebar:
     st.header("설정")
     idx_months = st.slider("주요 주가지수 Normalized 기간 (개월)", 3, 36, 6)
@@ -197,10 +217,8 @@ with st.sidebar:
     style_months = st.slider("스타일 ETF Normalized 기간 (개월)", 3, 36, 6)
     news_cnt = st.slider("뉴스 헤드라인 개수 (티커별)", 1, 5, 3)
 
-# ==== 버튼 및 로딩 ====
 if st.button("전일 시장 Update", type="primary"):
     with st.spinner("데이터 불러오는 중..."):
-        # 1. 주식/채권/통화/비트코인/섹터/스타일 성과 테이블
         st.subheader("📊 주식시장 성과 (다양한 기간)")
         stock_perf = get_perf_table(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(stock_perf.set_index('자산명'), use_container_width=True, height=350)
@@ -220,8 +238,7 @@ if st.button("전일 시장 Update", type="primary"):
         st.subheader("📊 스타일 ETF 성과 (다양한 기간)")
         style_perf = get_perf_table(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(style_perf.set_index('자산명'), use_container_width=True, height=250)
-        
-        # 2. 주요 주가지수 Normalized 성과
+
         st.subheader(f"📈 주요 주가지수 Normalized 수익률 (최근 {idx_months}개월)")
         norm_idx = get_normalized_prices(STOCK_ETFS, months=idx_months)
         fig1 = go.Figure()
@@ -233,7 +250,6 @@ if st.button("전일 시장 Update", type="primary"):
         )
         st.plotly_chart(fig1, use_container_width=True)
 
-        # 3. 섹터 Normalized 성과
         st.subheader(f"📈 섹터 ETF Normalized 수익률 (최근 {sector_months}개월)")
         norm_sector = get_normalized_prices(SECTOR_ETFS, months=sector_months)
         fig2 = go.Figure()
@@ -245,7 +261,6 @@ if st.button("전일 시장 Update", type="primary"):
         )
         st.plotly_chart(fig2, use_container_width=True)
 
-        # 4. 스타일 ETF Normalized 성과
         st.subheader(f"📈 스타일 ETF Normalized 수익률 (최근 {style_months}개월)")
         norm_style = get_normalized_prices(STYLE_ETFS, months=style_months)
         fig3 = go.Figure()
@@ -257,7 +272,6 @@ if st.button("전일 시장 Update", type="primary"):
         )
         st.plotly_chart(fig3, use_container_width=True)
 
-        # 5. 뉴스 헤드라인
         st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
         headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD']
         news_df = get_news_headlines(headline_tickers, news_cnt)
@@ -267,19 +281,21 @@ if st.button("전일 시장 Update", type="primary"):
         else:
             st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
-        # 6. 미국 주식 Top/Bottom Movers
         st.subheader("🚀 미국 시장 전일 상승 Top 10 / 하락 Top 10 (S&P500 기준)")
         top10, bottom10 = get_sp500_top_bottom_movers()
-        st.markdown("**Top 10 상승**")
-        st.dataframe(top10.set_index('Ticker'), use_container_width=True, height=320)
-        st.markdown("**Top 10 하락**")
-        st.dataframe(bottom10.set_index('Ticker'), use_container_width=True, height=320)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(px.bar(top10, x='종가', y='전일수익률(%)', text='전일수익률(%)', hover_data=['Volume', '시가총액'],
-                                   orientation='h', title="Top10 상승폭(%)", color='전일수익률(%)', color_continuous_scale='Teal'), use_container_width=True)
-        with col2:
-            st.plotly_chart(px.bar(bottom10, x='종가', y='전일수익률(%)', text='전일수익률(%)', hover_data=['Volume', '시가총액'],
-                                   orientation='h', title="Top10 하락폭(%)", color='전일수익률(%)', color_continuous_scale='OrRd'), use_container_width=True)
+        if top10.empty or bottom10.empty:
+            st.info("S&P500 Top/Bottom movers를 불러올 수 없습니다. 인터넷 연결 및 lxml 패키지를 확인하세요.")
+        else:
+            st.markdown("**Top 10 상승**")
+            st.dataframe(top10.set_index('Ticker'), use_container_width=True, height=320)
+            st.markdown("**Top 10 하락**")
+            st.dataframe(bottom10.set_index('Ticker'), use_container_width=True, height=320)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(px.bar(top10, x='종가', y='전일수익률(%)', text='전일수익률(%)', hover_data=['Volume', '시가총액'],
+                                       orientation='h', title="Top10 상승폭(%)", color='전일수익률(%)', color_continuous_scale='Teal'), use_container_width=True)
+            with col2:
+                st.plotly_chart(px.bar(bottom10, x='종가', y='전일수익률(%)', text='전일수익률(%)', hover_data=['Volume', '시가총액'],
+                                       orientation='h', title="Top10 하락폭(%)", color='전일수익률(%)', color_continuous_scale='OrRd'), use_container_width=True)
 else:
     st.info("왼쪽 설정 후 '전일 시장 Update' 버튼을 눌러주세요.")
