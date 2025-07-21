@@ -21,7 +21,7 @@ st.set_page_config(
 # ----------------- 사이드바 디자인 개선 -----------------
 with st.sidebar:
     st.image("https://img.icons8.com/color/2x/search.png", width=90)
-    st.markdown("<h2 style='color:#35008c; text-align:center;'>설정</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#ebebeb; text-align:center;'>설정</h2>", unsafe_allow_html=True)
     st.markdown("---")
     idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
     sector_months = st.slider("🏢 섹터 Normalized 기간 (개월)", 3, 36, 6, help="섹터별 Normalized 수익률의 기간입니다")
