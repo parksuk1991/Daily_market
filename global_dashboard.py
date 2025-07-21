@@ -12,7 +12,28 @@ try:
 except ImportError:
     st.error("lxml 패키지가 필요합니다. requirements.txt에 lxml을 추가하세요.")
 
-# ===== 자산 정의 =====
+st.set_page_config(
+    page_title="글로벌 시황 대시보드",
+    page_icon="🌐",
+    layout="wide"
+)
+
+# ----------------- 사이드바 디자인 개선 -----------------
+with st.sidebar:
+    st.image("https://img.icons8.com/color/2x/search.png", width=90)
+    st.markdown("<h2 style='color:#008B8B; text-align:center;'>글로벌 대시보드 설정</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
+    sector_months = st.slider("🏢 섹터 Normalized 기간 (개월)", 3, 36, 6, help="섹터별 Normalized 수익률의 기간입니다")
+    style_months = st.slider("🌈 스타일 ETF Normalized 기간 (개월)", 3, 36, 6, help="스타일ETF Normalized 수익률의 기간입니다")
+    news_cnt = st.slider("📰 뉴스 헤드라인 개수 (티커별)", 1, 5, 3)
+    st.markdown("---")
+    st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
+
+st.title("🌐 글로벌 시황 대시보드")
+st.markdown("#### 전일 시장 데이터 및 다양한 기간별 성과 확인")
+
+# =========== 자산 정의 ================
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY',
     'NASDAQ 100 (QQQ)': 'QQQ',
@@ -72,7 +93,6 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
-# ===== 데이터 및 성과 함수 =====
 def get_perf_table(label2ticker, start, end):
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
@@ -110,15 +130,18 @@ def get_perf_table(label2ticker, start, end):
         for k, val in periods.items():
             try:
                 if k == 'MTD':
+                    # MTD: 월초 첫 영업일 종가 기준(현재 일자의 월과 동일한 index 중 첫 번째)
                     base_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
                     base = series.loc[base_idx]
                 elif k == 'YTD':
+                    # YTD: 연초 첫 영업일 종가 기준(현재 일자의 연과 동일한 index 중 첫 번째)
                     base_idx = series.index[(series.index.year == last.year)][0]
                     base = series.loc[base_idx]
                 elif k == '1W':
+                    # 1주일 전 영업일 찾기(현재일자에서 7일 이내 중 가장 가까운 지난 영업일)
                     idx = series.index.get_loc(last)
                     found = False
-                    for back in range(1, 8):
+                    for back in range(1, 8):  # 최대 7영업일 전까지 시도
                         if idx - back >= 0:
                             base = series.iloc[idx - back]
                             if not np.isnan(base):
@@ -144,6 +167,70 @@ def get_perf_table(label2ticker, start, end):
         df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
     df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return df_r
+
+def get_perf_table_numeric(label2ticker, start, end):
+    tickers = list(label2ticker.values())
+    today = end
+    first_date = today - timedelta(days=365*3+31)
+    df = yf.download(tickers, start=first_date, end=today+timedelta(days=1), progress=False)['Close']
+    if isinstance(df, pd.Series):
+        df = df.to_frame()
+    df = df.ffill()
+    df = df[tickers]
+    last = df.index[-1]
+    periods = {
+        '1D': 1,
+        '1W': 5,
+        'MTD': None,
+        '1M': 21,
+        '3M': 63,
+        '6M': 126,
+        'YTD': None,
+        '1Y': 252,
+        '3Y': 756
+    }
+    results = []
+    for label, ticker in label2ticker.items():
+        row = {}
+        try:
+            series = df[ticker]
+        except Exception:
+            for k in periods: row[k] = np.nan
+            results.append(row)
+            continue
+        curr_val = series.iloc[-1] if not np.isnan(series.iloc[-1]) else None
+        for k, val in periods.items():
+            try:
+                if k == 'MTD':
+                    base_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
+                    base = series.loc[base_idx]
+                elif k == 'YTD':
+                    base_idx = series.index[(series.index.year == last.year)][0]
+                    base = series.loc[base_idx]
+                elif k == '1W':
+                    idx = series.index.get_loc(last)
+                    found = False
+                    for back in range(1, 8):
+                        if idx - back >= 0:
+                            base = series.iloc[idx - back]
+                            if not np.isnan(base):
+                                found = True
+                                break
+                    if not found:
+                        base = series.iloc[0]
+                else:
+                    if val is not None and len(series) > val:
+                        base = series.iloc[-val-1]
+                    else:
+                        base = series.iloc[0]
+                if base is not None and curr_val is not None and base != 0:
+                    row[k] = (curr_val/base - 1) * 100
+                else:
+                    row[k] = np.nan
+            except Exception:
+                row[k] = np.nan
+        results.append(row)
+    return pd.DataFrame(results, index=list(label2ticker.keys()))
 
 def get_normalized_prices(label2ticker, months=6):
     tickers = list(label2ticker.values())
@@ -239,6 +326,7 @@ def get_sp500_top_bottom_movers():
     return top10, bottom10
 
 def make_vertical_styler_colwise_minmax(df, cols):
+    # 각 열별로 min/max 기준으로 컬러를 정하고 모든 행에 적용(열별 독립적 히트맵)
     def stylefn(x):
         result = []
         for col in x.index:
@@ -257,36 +345,19 @@ def make_vertical_styler_colwise_minmax(df, cols):
             if pd.isnull(v):
                 result.append("")
                 continue
+            # 빨강(최저)~흰~초록(최고) linear mapping
             if rng == 0:
                 ratio = 0.5
             else:
                 ratio = (v - minv) / rng
+            # green for high, red for low, white for center
             r = int((1 - ratio) * 255 + ratio * 220)
             g = int((1 - ratio) * 255 + ratio * 255)
             b = int((1 - ratio) * 255 + ratio * 220)
+            # slightly more vivid
             result.append(f"background-color: rgb({r},{g},{b},0.7)")
         return result
     return stylefn
-
-# ===== Streamlit UI =====
-st.set_page_config(
-    page_title="글로벌 시황 대시보드",
-    page_icon="🌐",
-    layout="wide"
-)
-with st.sidebar:
-    st.image("https://img.icons8.com/color/2x/search.png", width=90)
-    st.markdown("<h2 style='color:#008B8B; text-align:center;'>글로벌 대시보드 설정</h2>", unsafe_allow_html=True)
-    st.markdown("---")
-    idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
-    sector_months = st.slider("🏢 섹터 Normalized 기간 (개월)", 3, 36, 6, help="섹터별 Normalized 수익률의 기간입니다")
-    style_months = st.slider("🌈 스타일 ETF Normalized 기간 (개월)", 3, 36, 6, help="스타일ETF Normalized 수익률의 기간입니다")
-    news_cnt = st.slider("📰 뉴스 헤드라인 개수 (티커별)", 1, 5, 3)
-    st.markdown("---")
-    st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
-
-st.title("🌐 글로벌 시황 대시보드")
-st.markdown("#### 전일 시장 데이터 및 다양한 기간별 성과 확인")
 
 if st.button("전일 시장 Update", type="primary"):
     with st.spinner("데이터 불러오는 중..."):
