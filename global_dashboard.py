@@ -21,7 +21,7 @@ st.set_page_config(
 # ----------------- 사이드바 디자인 개선 -----------------
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/worldwide-location.png", width=90)
-    st.markdown("<h2 style='color:#008B8B; text-align:center;'>주요 설정</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#008B8B; text-align:center;'>글로벌 대시보드 설정</h2>", unsafe_allow_html=True)
     st.markdown("---")
     idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
     sector_months = st.slider("🏢 섹터 Normalized 기간 (개월)", 3, 36, 6, help="섹터별 Normalized 수익률의 기간입니다")
@@ -95,6 +95,7 @@ STYLE_ETFS = {
 
 def get_perf_table(label2ticker, start, end):
     tickers = list(label2ticker.values())
+    labels = list(label2ticker.keys())
     today = end
     first_date = today - timedelta(days=365*3+31)
     df = yf.download(tickers, start=first_date, end=today+timedelta(days=1), progress=False)['Close']
@@ -129,20 +130,9 @@ def get_perf_table(label2ticker, start, end):
         for k, val in periods.items():
             try:
                 if k == 'MTD':
-                    # MTD: 이번 달 1일부터 today까지, base는 이번 달 1일의 첫 거래일 종가
-                    base_idx = series.index[(series.index.month == last.month) & (series.index.day == 1)]
-                    if len(base_idx) == 0:
-                        # 첫 영업일이 1일이 아닐 때(예: 7/1이 휴일이면 7월 첫 영업일)
-                        base = series[series.index.month == last.month].iloc[0]
-                    else:
-                        base = series.loc[base_idx[0]]
+                    base = series[:last][series.index.month == last.month].iloc[0]
                 elif k == 'YTD':
-                    # YTD: 올해 1월 첫 거래일 종가
-                    base_idx = series.index[(series.index.year == last.year) & (series.index.month == 1) & (series.index.day == 1)]
-                    if len(base_idx) == 0:
-                        base = series[series.index.year == last.year].iloc[0]
-                    else:
-                        base = series.loc[base_idx[0]]
+                    base = series[:last][series.index.year == last.year].iloc[0]
                 elif k == '1W':
                     # 1주일 전의 실제 영업일(5일 전이 데이터가 없을 수 있음) 보정
                     idx = series.index.get_loc(last)
@@ -173,6 +163,68 @@ def get_perf_table(label2ticker, start, end):
         df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
     df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return df_r
+
+def get_perf_table_numeric(label2ticker, start, end):
+    tickers = list(label2ticker.values())
+    today = end
+    first_date = today - timedelta(days=365*3+31)
+    df = yf.download(tickers, start=first_date, end=today+timedelta(days=1), progress=False)['Close']
+    if isinstance(df, pd.Series):
+        df = df.to_frame()
+    df = df.ffill()
+    df = df[tickers]
+    last = df.index[-1]
+    periods = {
+        '1D': 1,
+        '1W': 5,
+        'MTD': None,
+        '1M': 21,
+        '3M': 63,
+        '6M': 126,
+        'YTD': None,
+        '1Y': 252,
+        '3Y': 756
+    }
+    results = []
+    for label, ticker in label2ticker.items():
+        row = {}
+        try:
+            series = df[ticker]
+        except Exception:
+            for k in periods: row[k] = np.nan
+            results.append(row)
+            continue
+        curr_val = series.iloc[-1] if not np.isnan(series.iloc[-1]) else None
+        for k, val in periods.items():
+            try:
+                if k == 'MTD':
+                    base = series[:last][series.index.month == last.month].iloc[0]
+                elif k == 'YTD':
+                    base = series[:last][series.index.year == last.year].iloc[0]
+                elif k == '1W':
+                    idx = series.index.get_loc(last)
+                    found = False
+                    for back in range(1, 8):
+                        if idx - back >= 0:
+                            base = series.iloc[idx - back]
+                            if not np.isnan(base):
+                                found = True
+                                break
+                    if not found:
+                        base = series.iloc[0]
+                else:
+                    if val is not None and len(series) > val:
+                        base = series.iloc[-val-1]
+                    else:
+                        base = series.iloc[0]
+                if base and curr_val:
+                    row[k] = (curr_val/base - 1) * 100
+                else:
+                    row[k] = np.nan
+            except Exception:
+                row[k] = np.nan
+        results.append(row)
+    return pd.DataFrame(results, index=list(label2ticker.keys()))
 
 def get_normalized_prices(label2ticker, months=6):
     tickers = list(label2ticker.values())
@@ -227,6 +279,8 @@ def get_sp500_top_bottom_movers():
         return pd.DataFrame(), pd.DataFrame()
     tickers = stocks['Symbol'].unique().tolist()
     tickers = [t.replace('.', '-') for t in tickers]
+    name_map = dict(zip(stocks['Symbol'].str.replace('.', '-'), stocks['Security']))
+    sector_map = dict(zip(stocks['Symbol'].str.replace('.', '-'), stocks['GICS Sector']))
     try:
         df = yf.download(tickers, period="5d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
     except Exception as e:
@@ -236,14 +290,23 @@ def get_sp500_top_bottom_movers():
     for t in tickers:
         try:
             closes = df[t]['Close']
+            vols = df[t]['Volume']
             last = closes.index[-1]
             prev = closes.index[-2]
             curr_close = closes.loc[last]
             prev_close = closes.loc[prev]
             ret = (curr_close/prev_close-1)*100 if prev_close else np.nan
+            volume = vols.loc[last]
+            yf_info = yf.Ticker(t).info
+            mktcap = yf_info.get("marketCap", np.nan)
             results.append({
                 "Ticker": t,
-                "전일수익률(%)": round(ret,2)
+                "종가": curr_close,
+                "전일수익률(%)": ret,
+                "Volume": volume,
+                "시가총액": mktcap,
+                "종목명": name_map.get(t, ""),
+                "섹터명": sector_map.get(t, "")
             })
         except Exception:
             continue
@@ -251,78 +314,124 @@ def get_sp500_top_bottom_movers():
     if movers.empty or "전일수익률(%)" not in movers.columns:
         return pd.DataFrame(), pd.DataFrame()
     movers = movers.dropna(subset=["전일수익률(%)"])
+    movers['전일수익률(%)'] = movers['전일수익률(%)'].round(2)
     top10 = movers.sort_values("전일수익률(%)", ascending=False).head(10)
     bottom10 = movers.sort_values("전일수익률(%)", ascending=True).head(10)
     return top10, bottom10
 
-def get_colormap(series):
-    # 각 컬럼(시리즈)의 값에 대해 min~max 기준으로 색상 반환
-    vals = series.str.replace("%","").astype(float)
-    minv = vals.min(skipna=True)
-    maxv = vals.max(skipna=True)
-    rng = maxv - minv
-    res = []
-    for v in vals:
-        if np.isnan(v):
-            res.append("")
-            continue
-        # 빨강(최저)~흰~초록(최고) linear mapping
-        if rng == 0:
-            ratio = 0.5
-        else:
-            ratio = (v - minv) / rng
-        if v >= 0:
-            r, g, b = int((1-ratio)*220), int(180 + ratio*75), int((1-ratio)*220)
-        else:
-            r, g, b = int(220 + ratio*35), int((1-ratio)*180), int((1-ratio)*220)
-        r = min(max(r, 0), 255)
-        g = min(max(g, 0), 255)
-        b = min(max(b, 0), 255)
-        res.append(f"background-color: rgb({r},{g},{b},0.6)")
-    return res
+def colorize_vertical_heatmap(df, cols):
+    # 각 컬럼별로 min/max 기준으로 컬러를 정하고 모든 행에 적용
+    styled = df.copy()
+    for col in cols:
+        try:
+            vals = df[col].str.replace("%", "").astype(float)
+        except Exception:
+            vals = pd.Series([np.nan]*len(df))
+        minv = vals.min(skipna=True)
+        maxv = vals.max(skipna=True)
+        rng = maxv - minv
+        colors = []
+        for v in vals:
+            if np.isnan(v):
+                colors.append("")
+                continue
+            # 빨강(최저)~흰~초록(최고) linear mapping
+            if rng == 0:
+                ratio = 0.5
+            else:
+                ratio = (v - minv) / rng
+            if v >= 0:
+                r, g, b = int((1-ratio)*220), int(180 + ratio*75), int((1-ratio)*220)
+            else:
+                r, g, b = int(220 + ratio*35), int((1-ratio)*180), int((1-ratio)*220)
+            r = min(max(r, 0), 255)
+            g = min(max(g, 0), 255)
+            b = min(max(b, 0), 255)
+            colors.append(f"background-color: rgb({r},{g},{b},0.6)")
+        styled[col] = colors
+    return styled
 
-def heatmap_styler(df, perf_cols):
-    # 각 열별로 자기 열만 히트맵 적용
-    styles = pd.DataFrame("", index=df.index, columns=df.columns)
-    for col in perf_cols:
-        if col in df.columns:
-            styles[col] = get_colormap(df[col])
-    return styles
+def make_vertical_styler(df, cols):
+    # streamlit styler용: 각 열별로 색상 반환
+    def stylefn(x):
+        result = []
+        for col in x.index:
+            if col not in cols:
+                result.append("")
+                continue
+            try:
+                vals = x[col].replace("%","")
+                v = float(vals)
+            except Exception:
+                result.append("")
+                continue
+            # 컬럼별 min/max
+            col_vals = df[col].str.replace("%","").astype(float)
+            minv = col_vals.min(skipna=True)
+            maxv = col_vals.max(skipna=True)
+            rng = maxv - minv
+            if rng == 0:
+                ratio = 0.5
+            else:
+                ratio = (v - minv) / rng
+            if v >= 0:
+                r, g, b = int((1-ratio)*220), int(180 + ratio*75), int((1-ratio)*220)
+            else:
+                r, g, b = int(220 + ratio*35), int((1-ratio)*180), int((1-ratio)*220)
+            r = min(max(r, 0), 255)
+            g = min(max(g, 0), 255)
+            b = min(max(b, 0), 255)
+            result.append(f"background-color: rgb({r},{g},{b},0.6)")
+        return result
+    return stylefn
 
 if st.button("전일 시장 Update", type="primary"):
     with st.spinner("데이터 불러오는 중..."):
-        perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
-
         st.subheader("📊 주식시장 성과")
         stock_perf = get_perf_table(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        stock_styles = heatmap_styler(stock_perf.set_index('자산명'), perf_cols)
-        st.dataframe(stock_perf.set_index('자산명').style.apply(lambda x: stock_styles.loc[x.name], axis=1), use_container_width=True, height=470)
+        perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        # 각 열별로 vertical heatmap 적용(styler로)
+        st.dataframe(
+            stock_perf.set_index('자산명').style.apply(make_vertical_styler(stock_perf.set_index('자산명'), perf_cols), axis=1),
+            use_container_width=True, height=470
+        )
 
         st.subheader("📊 채권시장 성과")
         bond_perf = get_perf_table(BOND_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        bond_styles = heatmap_styler(bond_perf.set_index('자산명'), perf_cols)
-        st.dataframe(bond_perf.set_index('자산명').style.apply(lambda x: bond_styles.loc[x.name], axis=1), use_container_width=True, height=420)
+        st.dataframe(
+            bond_perf.set_index('자산명').style.apply(make_vertical_styler(bond_perf.set_index('자산명'), perf_cols), axis=1),
+            use_container_width=True, height=420
+        )
 
         st.subheader("📊 통화시장 성과")
         curr_perf = get_perf_table(CURRENCY, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        curr_styles = heatmap_styler(curr_perf.set_index('자산명'), perf_cols)
-        st.dataframe(curr_perf.set_index('자산명').style.apply(lambda x: curr_styles.loc[x.name], axis=1), use_container_width=True, height=200)
+        st.dataframe(
+            curr_perf.set_index('자산명').style.apply(make_vertical_styler(curr_perf.set_index('자산명'), perf_cols), axis=1),
+            use_container_width=True, height=200
+        )
 
         st.subheader("📊 암호화폐 성과")
         crypto_perf = get_perf_table(CRYPTO, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        crypto_styles = heatmap_styler(crypto_perf.set_index('자산명'), perf_cols)
-        st.dataframe(crypto_perf.set_index('자산명').style.apply(lambda x: crypto_styles.loc[x.name], axis=1), use_container_width=True, height=180)
+        st.dataframe(
+            crypto_perf.set_index('자산명').style.apply(make_vertical_styler(crypto_perf.set_index('자산명'), perf_cols), axis=1),
+            use_container_width=True, height=180
+        )
 
         st.subheader("📊 스타일 ETF 성과")
         style_perf = get_perf_table(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        style_styles = heatmap_styler(style_perf.set_index('자산명'), perf_cols)
-        st.dataframe(style_perf.set_index('자산명').style.apply(lambda x: style_styles.loc[x.name], axis=1), use_container_width=True, height=250)
+        st.dataframe(
+            style_perf.set_index('자산명').style.apply(make_vertical_styler(style_perf.set_index('자산명'), perf_cols), axis=1),
+            use_container_width=True, height=250
+        )
 
         st.subheader("📊 섹터 ETF 성과")
         sector_perf = get_perf_table(SECTOR_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        sector_styles = heatmap_styler(sector_perf.set_index('자산명'), perf_cols)
+        # 전체 행이 항상 한 화면에 다 보이도록 height 자동 조정
         sector_height = int(43 * sector_perf.shape[0] + 42)
-        st.dataframe(sector_perf.set_index('자산명').style.apply(lambda x: sector_styles.loc[x.name], axis=1), use_container_width=True, height=sector_height)
+        st.dataframe(
+            sector_perf.set_index('자산명').style.apply(make_vertical_styler(sector_perf.set_index('자산명'), perf_cols), axis=1),
+            use_container_width=True, height=sector_height
+        )
 
         st.subheader(f"📈 주요 주가지수 수익률 (최근 {idx_months}개월)")
         norm_idx = get_normalized_prices(STOCK_ETFS, months=idx_months)
@@ -331,7 +440,7 @@ if st.button("전일 시장 Update", type="primary"):
             fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
         fig1.update_layout(
             xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=500, legend=dict(orientation='h')
+            template="plotly_dark", height=400, legend=dict(orientation='h')
         )
         st.plotly_chart(fig1, use_container_width=True)
 
@@ -342,7 +451,7 @@ if st.button("전일 시장 Update", type="primary"):
             fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
         fig2.update_layout(
             xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=500, legend=dict(orientation='h')
+            template="plotly_dark", height=400, legend=dict(orientation='h')
         )
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -353,7 +462,7 @@ if st.button("전일 시장 Update", type="primary"):
             fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
         fig3.update_layout(
             xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=500, legend=dict(orientation='h')
+            template="plotly_dark", height=400, legend=dict(orientation='h')
         )
         st.plotly_chart(fig3, use_container_width=True)
 
@@ -372,48 +481,24 @@ if st.button("전일 시장 Update", type="primary"):
             st.info("S&P500 Top/Bottom movers를 불러올 수 없습니다. 인터넷 연결 및 lxml 패키지를 확인하세요.")
         else:
             st.markdown("**Top 10 상승**")
-            st.dataframe(top10.set_index('Ticker')[['전일수익률(%)']], use_container_width=True, height=380)
+            st.dataframe(top10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']], use_container_width=True, height=380)
             st.markdown("**Top 10 하락**")
-            st.dataframe(bottom10.set_index('Ticker')[['전일수익률(%)']], use_container_width=True, height=380)
+            st.dataframe(bottom10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']], use_container_width=True, height=380)
             
             col1, col2 = st.columns(2)
             with col1:
-                fig_top = px.bar(
-                    top10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
-                    color_continuous_scale='Teal'
-                )
-                fig_top.update_traces(
-                    texttemplate='%{text:.2f}%', textposition='outside',
-                    hovertemplate='Ticker: %{x}<br>전일수익률: %{y:.2f}%<extra></extra>'
-                )
-                fig_top.update_layout(
-                    xaxis_title='티커', yaxis_title='전일수익률(%)',
-                    template='plotly_white', height=500,
-                    yaxis=dict(automargin=True, tickformat=".2f", range=[
-                        min(0, top10["전일수익률(%)"].min() - 1),
-                        top10["전일수익률(%)"].max() + 2
-                    ]),
-                    margin=dict(t=40, b=40, r=10, l=10)
-                )
+                fig_top = px.bar(top10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
+                                 hover_data=['종목명', '섹터명', '종가', 'Volume', '시가총액'],
+                                 title="Top10 상승폭(%)", color_continuous_scale='Teal')
+                fig_top.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                fig_top.update_layout(xaxis_title='티커', yaxis_title='전일수익률(%)', template='plotly_white', height=500)
                 st.plotly_chart(fig_top, use_container_width=True)
             with col2:
-                fig_bot = px.bar(
-                    bottom10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
-                    color_continuous_scale='OrRd'
-                )
-                fig_bot.update_traces(
-                    texttemplate='%{text:.2f}%', textposition='outside',
-                    hovertemplate='Ticker: %{x}<br>전일수익률: %{y:.2f}%<extra></extra>'
-                )
-                fig_bot.update_layout(
-                    xaxis_title='티커', yaxis_title='전일수익률(%)',
-                    template='plotly_white', height=500,
-                    yaxis=dict(automargin=True, tickformat=".2f", range=[
-                        bottom10["전일수익률(%)"].min() - 2,
-                        max(0, bottom10["전일수익률(%)"].max() + 1)
-                    ]),
-                    margin=dict(t=40, b=40, r=10, l=10)
-                )
+                fig_bot = px.bar(bottom10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
+                                 hover_data=['종목명', '섹터명', '종가', 'Volume', '시가총액'],
+                                 title="Top10 하락폭(%)", color_continuous_scale='OrRd')
+                fig_bot.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                fig_bot.update_layout(xaxis_title='티커', yaxis_title='전일수익률(%)', template='plotly_white', height=500)
                 st.plotly_chart(fig_bot, use_container_width=True)
 else:
     st.info("왼쪽 설정 후 '전일 시장 Update' 버튼을 눌러주세요.")
