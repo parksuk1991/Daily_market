@@ -21,7 +21,7 @@ st.set_page_config(
 # ----------------- 사이드바 디자인 개선 -----------------
 with st.sidebar:
     st.image("https://img.icons8.com/color/2x/search.png", width=90)
-    st.markdown("<h2 style='color:#008B8B; text-align:center;'>글로벌 대시보드 설정</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#eb008d; text-align:center;'>설정</h2>", unsafe_allow_html=True)
     st.markdown("---")
     idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
     sector_months = st.slider("🏢 섹터 Normalized 기간 (개월)", 3, 36, 6, help="섹터별 Normalized 수익률의 기간입니다")
@@ -35,17 +35,17 @@ st.markdown("#### 전일 시장 데이터 및 다양한 기간별 성과 확인"
 
 # =========== 자산 정의 ================
 STOCK_ETFS = {
-    'S&P 500 (SPY)': 'SPY',
-    'NASDAQ 100 (QQQ)': 'QQQ',
-    'MSCI ACWI (ACWI)': 'ACWI',
-    '유럽(Europe, VGK)': 'VGK',
-    '중국(China, MCHI)': 'MCHI',
-    '일본(Japan, EWJ)': 'EWJ',
-    '한국(KOSPI, EWY)': 'EWY',
-    '인도(INDIA, INDA)': 'INDA',
-    '영국(UK, EWU)': 'EWU',
-    '브라질(Brazil, EWZ)': 'EWZ',
-    '캐나다(Canada, EWC)': 'EWC'
+    'S&P 500': 'SPY',
+    'NASDAQ 100': 'QQQ',
+    'MSCI ACWI': 'ACWI',
+    '유럽(VGK)': 'VGK',
+    '중국(MCHI)': 'MCHI',
+    '일본(EWJ)': 'EWJ',
+    '한국(EWY)': 'EWY',
+    '인도(INDA)': 'INDA',
+    '영국(EWU)': 'EWU',
+    '브라질(EWZ)': 'EWZ',
+    '캐나다(EWC)': 'EWC'
 }
 BOND_ETFS = {
     '미국 장기국채(TLT)': 'TLT',
@@ -68,29 +68,28 @@ CRYPTO = {
     '비트코인(BTC-USD)': 'BTC-USD',
     '이더리움(ETH-USD)': 'ETH-USD',
     '솔라나(SOL-USD)': 'SOL-USD',
-    '리플(XRP-USD)': 'XRP-USD',
-    '폴리곤(MATIC-USD)': 'MATIC-USD'
+    '리플(XRP-USD)': 'XRP-USD'
 }
 SECTOR_ETFS = {
-    'IT (XLK)': 'XLK',
-    '헬스케어 (XLV)': 'XLV',
-    '금융 (XLF)': 'XLF',
-    '커뮤니케이션 (XLC)': 'XLC',
-    '에너지 (XLE)': 'XLE',
-    '산업재 (XLI)': 'XLI',
-    '소재 (XLB)': 'XLB',
-    '필수소비재 (XLP)': 'XLP',
-    '자유소비재 (XLY)': 'XLY',
-    '유틸리티 (XLU)': 'XLU',
-    '부동산 (XLRE)': 'XLRE'
+    'IT': 'XLK',
+    '헬스케어': 'XLV',
+    '금융': 'XLF',
+    '커뮤니케이션': 'XLC',
+    '에너지': 'XLE',
+    '산업재': 'XLI',
+    '소재': 'XLB',
+    '필수소비재': 'XLP',
+    '자유소비재': 'XLY',
+    '유틸리티': 'XLU',
+    '부동산': 'XLRE'
 }
 STYLE_ETFS = {
-    'Growth (SPYG)': 'SPYG',
-    'Value (SPYV)': 'SPYV',
-    'Momentum (MTUM)': 'MTUM',
-    'Quality (QUAL)': 'QUAL',
-    'Dividend (VIG)': 'VIG',
-    'Low Volatility (USMV)': 'USMV'
+    'Growth': 'SPYG',
+    'Value': 'SPYV',
+    'Momentum': 'MTUM',
+    'Quality': 'QUAL',
+    'Dividend': 'VIG',
+    'Low Volatility': 'USMV'
 }
 
 # === 정확한 기준일별 수익률 계산 함수 ===
