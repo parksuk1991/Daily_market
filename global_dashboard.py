@@ -104,17 +104,6 @@ def get_perf_table(label2ticker, start, end):
     df = df.ffill()
     df = df[tickers]  # enforce order
     last = df.index[-1]
-    periods = {
-        '1D': 1,
-        '1W': 5,
-        'MTD': None,
-        '1M': 21,
-        '3M': 63,
-        '6M': 126,
-        'YTD': None,
-        '1Y': 252,
-        '3Y': 756
-    }
     results = []
     for label, ticker in label2ticker.items():
         row = {}
@@ -123,44 +112,81 @@ def get_perf_table(label2ticker, start, end):
             series = df[ticker]
         except Exception:
             row['현재값'] = np.nan
-            for k in periods: row[k] = np.nan
+            for k in ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']:
+                row[k] = np.nan
             results.append(row)
             continue
+
         row['현재값'] = series.iloc[-1] if not np.isnan(series.iloc[-1]) else None
-        for k, val in periods.items():
+
+        # 보조 함수: 기준일 찾기 (영업일 존재 보장)
+        def find_nearest_index(series_idx, target_date):
+            # target_date 이전 or 같은 날 중 가장 마지막 영업일
+            candidates = series_idx[series_idx <= target_date]
+            if len(candidates) > 0:
+                return candidates[-1]
+            # target_date 이후 영업일
+            candidates = series_idx[series_idx >= target_date]
+            if len(candidates) > 0:
+                return candidates[0]
+            return series_idx[0]
+
+        # 1D: 마지막 두 영업일
+        try:
+            if len(series) >= 2:
+                base = series.iloc[-2]
+            else:
+                base = series.iloc[0]
+            row['1D'] = (series.iloc[-1]/base-1)*100 if base != 0 else np.nan
+        except Exception:
+            row['1D'] = np.nan
+
+        # 1W: 7일 전(달력 기준) 가장 가까운 영업일
+        try:
+            base_date = last - pd.Timedelta(days=7)
+            idx = find_nearest_index(series.index, base_date)
+            base = series.loc[idx]
+            row['1W'] = (series.iloc[-1]/base-1)*100 if base != 0 else np.nan
+        except Exception:
+            row['1W'] = np.nan
+
+        # MTD: 월초 첫 영업일
+        try:
+            mtd_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
+            base = series.loc[mtd_idx]
+            row['MTD'] = (series.iloc[-1]/base-1)*100 if base != 0 else np.nan
+        except Exception:
+            row['MTD'] = np.nan
+
+        # 1M: 1달 전(달력 기준) 가장 가까운 영업일
+        try:
+            base_date = last - pd.DateOffset(months=1)
+            idx = find_nearest_index(series.index, base_date)
+            base = series.loc[idx]
+            row['1M'] = (series.iloc[-1]/base-1)*100 if base != 0 else np.nan
+        except Exception:
+            row['1M'] = np.nan
+
+        # 3M, 6M, 1Y, 3Y
+        for col, offset in zip(['3M','6M','1Y','3Y'], [3,6,12,36]):
             try:
-                if k == 'MTD':
-                    # MTD: 월초 첫 영업일 종가 기준(현재 일자의 월과 동일한 index 중 첫 번째)
-                    base_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
-                    base = series.loc[base_idx]
-                elif k == 'YTD':
-                    # YTD: 연초 첫 영업일 종가 기준(현재 일자의 연과 동일한 index 중 첫 번째)
-                    base_idx = series.index[(series.index.year == last.year)][0]
-                    base = series.loc[base_idx]
-                elif k == '1W':
-                    # 1주일 전 영업일 찾기(현재일자에서 7일 이내 중 가장 가까운 지난 영업일)
-                    idx = series.index.get_loc(last)
-                    found = False
-                    for back in range(1, 8):  # 최대 7영업일 전까지 시도
-                        if idx - back >= 0:
-                            base = series.iloc[idx - back]
-                            if not np.isnan(base):
-                                found = True
-                                break
-                    if not found:
-                        base = series.iloc[0]
-                else:
-                    if val is not None and len(series) > val:
-                        base = series.iloc[-val-1]
-                    else:
-                        base = series.iloc[0]
-                if base is not None and row['현재값'] is not None and base != 0:
-                    row[k] = (row['현재값']/base - 1) * 100
-                else:
-                    row[k] = np.nan
+                base_date = last - pd.DateOffset(months=offset)
+                idx = find_nearest_index(series.index, base_date)
+                base = series.loc[idx]
+                row[col] = (series.iloc[-1]/base-1)*100 if base != 0 else np.nan
             except Exception:
-                row[k] = np.nan
+                row[col] = np.nan
+
+        # YTD: 연초 첫 영업일
+        try:
+            ytd_idx = series.index[(series.index.year == last.year)][0]
+            base = series.loc[ytd_idx]
+            row['YTD'] = (series.iloc[-1]/base-1)*100 if base != 0 else np.nan
+        except Exception:
+            row['YTD'] = np.nan
+
         results.append(row)
+
     df_r = pd.DataFrame(results)
     # 소수점 둘째자리까지 % 형식
     for col in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
@@ -168,115 +194,30 @@ def get_perf_table(label2ticker, start, end):
     df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return df_r
 
-def get_perf_table_numeric(label2ticker, start, end):
-    tickers = list(label2ticker.values())
-    today = end
-    first_date = today - timedelta(days=365*3+31)
-    df = yf.download(tickers, start=first_date, end=today+timedelta(days=1), progress=False)['Close']
-    if isinstance(df, pd.Series):
-        df = df.to_frame()
-    df = df.ffill()
-    df = df[tickers]
-    last = df.index[-1]
-    periods = {
-        '1D': 1,
-        '1W': 5,
-        'MTD': None,
-        '1M': 21,
-        '3M': 63,
-        '6M': 126,
-        'YTD': None,
-        '1Y': 252,
-        '3Y': 756
-    }
-    results = []
-    for label, ticker in label2ticker.items():
-        row = {}
-        try:
-            series = df[ticker]
-        except Exception:
-            for k in periods: row[k] = np.nan
-            results.append(row)
-            continue
-        curr_val = series.iloc[-1] if not np.isnan(series.iloc[-1]) else None
-        for k, val in periods.items():
+# 수익률 양수 빨간색, 음수 파란색 스타일러
+def make_return_color_styler(df, cols):
+    def stylefn(x):
+        result = []
+        for col in x.index:
+            if col not in cols:
+                result.append("")
+                continue
+            val = x[col]
             try:
-                if k == 'MTD':
-                    base_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
-                    base = series.loc[base_idx]
-                elif k == 'YTD':
-                    base_idx = series.index[(series.index.year == last.year)][0]
-                    base = series.loc[base_idx]
-                elif k == '1W':
-                    idx = series.index.get_loc(last)
-                    found = False
-                    for back in range(1, 8):
-                        if idx - back >= 0:
-                            base = series.iloc[idx - back]
-                            if not np.isnan(base):
-                                found = True
-                                break
-                    if not found:
-                        base = series.iloc[0]
+                num = float(val.replace("%", ""))
+                if num > 0:
+                    result.append("color:red;")
+                elif num < 0:
+                    result.append("color:blue;")
                 else:
-                    if val is not None and len(series) > val:
-                        base = series.iloc[-val-1]
-                    else:
-                        base = series.iloc[0]
-                if base is not None and curr_val is not None and base != 0:
-                    row[k] = (curr_val/base - 1) * 100
-                else:
-                    row[k] = np.nan
+                    result.append("")
             except Exception:
-                row[k] = np.nan
-        results.append(row)
-    return pd.DataFrame(results, index=list(label2ticker.keys()))
+                result.append("")
+        return result
+    return stylefn
 
-def get_normalized_prices(label2ticker, months=6):
-    tickers = list(label2ticker.values())
-    end = datetime.now().date()
-    start = end - timedelta(days=months*31)
-    df = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
-    if isinstance(df, pd.Series):
-        df = df.to_frame()
-    df = df.ffill()
-    df = df[tickers]
-    norm_df = df / df.iloc[0] * 100
-    norm_df.columns = [k for k in label2ticker]
-    return norm_df
-
-def get_news_headlines(tickers, limit=3):
-    news_list = []
-    for ticker_symbol in tickers:
-        ticker = yf.Ticker(ticker_symbol)
-        try:
-            news = ticker.news if hasattr(ticker, "news") else ticker.get_news()
-            for article in news[:limit]:
-                content = article.get('content', {})
-                title = article.get('title') or content.get('title')
-                pubdate = article.get('providerPublishTime') or content.get('pubDate')
-                if pubdate:
-                    if isinstance(pubdate, int):
-                        date = datetime.fromtimestamp(pubdate)
-                    else:
-                        try:
-                            date = pd.to_datetime(pubdate)
-                        except Exception:
-                            date = None
-                else:
-                    date = None
-                news_list.append({
-                    '티커': ticker_symbol,
-                    '일자': date.strftime('%Y-%m-%d') if date else '',
-                    '헤드라인': title
-                })
-        except Exception:
-            continue
-    df = pd.DataFrame(news_list)
-    if not df.empty:
-        df = df.sort_values('일자', ascending=False)
-    return df
-
+# Top/Bottom 10 함수에서 차트용 데이터 별도 추출 및 캐시 적용
+@st.cache_data(ttl=3600)
 def get_sp500_top_bottom_movers():
     try:
         stocks = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
@@ -323,7 +264,10 @@ def get_sp500_top_bottom_movers():
     movers['전일수익률(%)'] = movers['전일수익률(%)'].round(2)
     top10 = movers.sort_values("전일수익률(%)", ascending=False).head(10)
     bottom10 = movers.sort_values("전일수익률(%)", ascending=True).head(10)
-    return top10, bottom10
+    # 차트용 데이터 프레임도 여기서 만듦
+    top10_chart = top10[['Ticker', '전일수익률(%)']].copy()
+    bottom10_chart = bottom10[['Ticker', '전일수익률(%)']].copy()
+    return top10, bottom10, top10_chart, bottom10_chart
 
 def make_vertical_styler_colwise_minmax(df, cols):
     # 각 열별로 min/max 기준으로 컬러를 정하고 모든 행에 적용(열별 독립적 히트맵)
@@ -365,35 +309,35 @@ if st.button("전일 시장 Update", type="primary"):
         stock_perf = get_perf_table(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
         st.dataframe(
-            stock_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(stock_perf.set_index('자산명'), perf_cols), axis=1),
+            stock_perf.set_index('자산명').style.apply(make_return_color_styler(stock_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=470
         )
 
         st.subheader("📊 채권시장 성과")
         bond_perf = get_perf_table(BOND_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            bond_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(bond_perf.set_index('자산명'), perf_cols), axis=1),
+            bond_perf.set_index('자산명').style.apply(make_return_color_styler(bond_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=420
         )
 
         st.subheader("📊 통화시장 성과")
         curr_perf = get_perf_table(CURRENCY, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            curr_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(curr_perf.set_index('자산명'), perf_cols), axis=1),
+            curr_perf.set_index('자산명').style.apply(make_return_color_styler(curr_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=200
         )
 
         st.subheader("📊 암호화폐 성과")
         crypto_perf = get_perf_table(CRYPTO, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            crypto_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(crypto_perf.set_index('자산명'), perf_cols), axis=1),
+            crypto_perf.set_index('자산명').style.apply(make_return_color_styler(crypto_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=180
         )
 
         st.subheader("📊 스타일 ETF 성과")
         style_perf = get_perf_table(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            style_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(style_perf.set_index('자산명'), perf_cols), axis=1),
+            style_perf.set_index('자산명').style.apply(make_return_color_styler(style_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=250
         )
 
@@ -401,7 +345,7 @@ if st.button("전일 시장 Update", type="primary"):
         sector_perf = get_perf_table(SECTOR_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         sector_height = int(43 * sector_perf.shape[0] + 42)
         st.dataframe(
-            sector_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(sector_perf.set_index('자산명'), perf_cols), axis=1),
+            sector_perf.set_index('자산명').style.apply(make_return_color_styler(sector_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=sector_height
         )
 
@@ -448,27 +392,29 @@ if st.button("전일 시장 Update", type="primary"):
             st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
         st.subheader("🚀 미국 시장 전일 상승 Top 10 / 하락 Top 10 (S&P500 기준)")
-        top10, bottom10 = get_sp500_top_bottom_movers()
+        top10, bottom10, top10_chart, bottom10_chart = get_sp500_top_bottom_movers()
         if top10.empty or bottom10.empty:
             st.info("S&P500 Top/Bottom movers를 불러올 수 없습니다. 인터넷 연결 및 lxml 패키지를 확인하세요.")
         else:
             st.markdown("**Top 10 상승**")
-            st.dataframe(top10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']], use_container_width=True, height=380)
+            st.dataframe(top10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']].style
+                         .apply(make_return_color_styler(top10.set_index('Ticker'), ['전일수익률(%)']), axis=1),
+                         use_container_width=True, height=380)
             st.markdown("**Top 10 하락**")
-            st.dataframe(bottom10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']], use_container_width=True, height=380)
+            st.dataframe(bottom10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']].style
+                         .apply(make_return_color_styler(bottom10.set_index('Ticker'), ['전일수익률(%)']), axis=1),
+                         use_container_width=True, height=380)
             
             col1, col2 = st.columns(2)
             with col1:
-                fig_top = px.bar(top10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
-                                 hover_data=['종목명', '섹터명', '종가', 'Volume', '시가총액'],
-                                 title="Top10 상승폭(%)", color_continuous_scale='Teal')
+                fig_top = px.bar(top10_chart, x='Ticker', y='전일수익률(%)', text='전일수익률(%)',
+                                 title="Top10 상승폭(%)", color='전일수익률(%)', color_continuous_scale='Teal')
                 fig_top.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
                 fig_top.update_layout(xaxis_title='티커', yaxis_title='전일수익률(%)', template='plotly_white', height=500)
                 st.plotly_chart(fig_top, use_container_width=True)
             with col2:
-                fig_bot = px.bar(bottom10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
-                                 hover_data=['종목명', '섹터명', '종가', 'Volume', '시가총액'],
-                                 title="Top10 하락폭(%)", color_continuous_scale='OrRd')
+                fig_bot = px.bar(bottom10_chart, x='Ticker', y='전일수익률(%)', text='전일수익률(%)',
+                                 title="Top10 하락폭(%)", color='전일수익률(%)', color_continuous_scale='OrRd')
                 fig_bot.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
                 fig_bot.update_layout(xaxis_title='티커', yaxis_title='전일수익률(%)', template='plotly_white', height=500)
                 st.plotly_chart(fig_bot, use_container_width=True)
