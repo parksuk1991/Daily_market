@@ -18,23 +18,46 @@ st.set_page_config(
     layout="wide"
 )
 
+# ----------------- 사이드바 디자인 개선 -----------------
+with st.sidebar:
+    st.image("https://img.icons8.com/color/96/000000/worldwide-location.png", width=90)
+    st.markdown("<h2 style='color:#008B8B; text-align:center;'>글로벌 대시보드 설정</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
+    sector_months = st.slider("🏢 섹터 Normalized 기간 (개월)", 3, 36, 6, help="섹터별 Normalized 수익률의 기간입니다")
+    style_months = st.slider("🌈 스타일 ETF Normalized 기간 (개월)", 3, 36, 6, help="스타일ETF Normalized 수익률의 기간입니다")
+    news_cnt = st.slider("📰 뉴스 헤드라인 개수 (티커별)", 1, 5, 3)
+    st.markdown("---")
+    st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
+
 st.title("🌐 글로벌 시황 대시보드")
 st.markdown("#### 전일 시장 데이터 및 다양한 기간별 성과 확인")
 
-# ======= 자산 정의 =======
+# =========== 자산 정의 ================
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY',
     'NASDAQ 100 (QQQ)': 'QQQ',
     'MSCI ACWI (ACWI)': 'ACWI',
     '유럽(Europe, VGK)': 'VGK',
     '중국(China, MCHI)': 'MCHI',
-    '일본(Japan, EWJ)': 'EWJ'
+    '일본(Japan, EWJ)': 'EWJ',
+    '한국(KOSPI, EWY)': 'EWY',
+    '인도(INDIA, INDA)': 'INDA',
+    '영국(UK, EWU)': 'EWU',
+    '브라질(Brazil, EWZ)': 'EWZ',
+    '캐나다(Canada, EWC)': 'EWC'
 }
 BOND_ETFS = {
     '미국 장기국채(TLT)': 'TLT',
     '미국 단기국채(SHY)': 'SHY',
     '미국 IG회사채(LQD)': 'LQD',
-    '신흥국채(EMB)': 'EMB'
+    '신흥국채(EMB)': 'EMB',
+    '미국 하이일드(HYG)': 'HYG',
+    '미국 물가연동(TIP)': 'TIP',
+    '미국 단기회사채(VCSH)': 'VCSH',
+    '글로벌국채(BNDX)': 'BNDX',
+    '미국 국채(BND)': 'BND',
+    '단기국채(SPTS)': 'SPTS'
 }
 CURRENCY = {
     'USD/KRW': 'KRW=X',
@@ -42,7 +65,11 @@ CURRENCY = {
     'USD/JPY': 'JPY=X'
 }
 CRYPTO = {
-    '비트코인(BTC-USD)': 'BTC-USD'
+    '비트코인(BTC-USD)': 'BTC-USD',
+    '이더리움(ETH-USD)': 'ETH-USD',
+    '솔라나(SOL-USD)': 'SOL-USD',
+    '리플(XRP-USD)': 'XRP-USD',
+    '폴리곤(MATIC-USD)': 'MATIC-USD'
 }
 SECTOR_ETFS = {
     'IT (XLK)': 'XLK',
@@ -76,7 +103,6 @@ def get_perf_table(label2ticker, start, end):
     if isinstance(df, pd.Series):
         df = df.to_frame()
     df = df.ffill()
-    # Make sure columns are tickers (symbols)
     df = df[tickers]  # enforce order
     last = df.index[-1]
     periods = {
@@ -109,7 +135,7 @@ def get_perf_table(label2ticker, start, end):
                 elif k == 'YTD':
                     base = series[:last][series.index.year == last.year].iloc[0]
                 else:
-                    if len(series) > val:
+                    if val is not None and len(series) > val:
                         base = series.iloc[-val-1]
                     else:
                         base = series.iloc[0]
@@ -120,12 +146,68 @@ def get_perf_table(label2ticker, start, end):
             except Exception:
                 row[k] = np.nan
         results.append(row)
-    return pd.DataFrame(results)
+    df_r = pd.DataFrame(results)
+    # 소수점 둘째자리까지 % 형식
+    for col in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
+        df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
+    df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
+    return df_r
+
+def get_perf_table_numeric(label2ticker, start, end):
+    # 수치형 데이터(히트맵용) 반환
+    tickers = list(label2ticker.values())
+    today = end
+    first_date = today - timedelta(days=365*3+31)
+    df = yf.download(tickers, start=first_date, end=today+timedelta(days=1), progress=False)['Close']
+    if isinstance(df, pd.Series):
+        df = df.to_frame()
+    df = df.ffill()
+    df = df[tickers]
+    last = df.index[-1]
+    periods = {
+        '1D': 1,
+        '1W': 5,
+        'MTD': None,
+        '1M': 21,
+        '3M': 63,
+        '6M': 126,
+        'YTD': None,
+        '1Y': 252,
+        '3Y': 756
+    }
+    results = []
+    for label, ticker in label2ticker.items():
+        row = {}
+        try:
+            series = df[ticker]
+        except Exception:
+            for k in periods: row[k] = np.nan
+            results.append(row)
+            continue
+        curr_val = series.iloc[-1] if not np.isnan(series.iloc[-1]) else None
+        for k, val in periods.items():
+            try:
+                if k == 'MTD':
+                    base = series[:last][series.index.month == last.month].iloc[0]
+                elif k == 'YTD':
+                    base = series[:last][series.index.year == last.year].iloc[0]
+                else:
+                    if val is not None and len(series) > val:
+                        base = series.iloc[-val-1]
+                    else:
+                        base = series.iloc[0]
+                if base and curr_val:
+                    row[k] = (curr_val/base - 1) * 100
+                else:
+                    row[k] = np.nan
+            except Exception:
+                row[k] = np.nan
+        results.append(row)
+    return pd.DataFrame(results, index=list(label2ticker.keys()))
 
 def get_normalized_prices(label2ticker, months=6):
     # Download using ticker symbol, keep symbol as columns
     tickers = list(label2ticker.values())
-    labels = list(label2ticker.keys())
     end = datetime.now().date()
     start = end - timedelta(days=months*31)
     df = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
@@ -134,12 +216,10 @@ def get_normalized_prices(label2ticker, months=6):
     df = df.ffill()
     df = df[tickers]
     norm_df = df / df.iloc[0] * 100
-    # return DataFrame with label columns
     norm_df.columns = [k for k in label2ticker]
     return norm_df
 
 def get_news_headlines(tickers, limit=3):
-    # (동일)
     news_list = []
     for ticker_symbol in tickers:
         ticker = yf.Ticker(ticker_symbol)
@@ -172,7 +252,7 @@ def get_news_headlines(tickers, limit=3):
     return df
 
 def get_sp500_top_bottom_movers():
-    # S&P500 전체 티커/섹터/시총/볼륨/종가/변동률
+    # S&P500 전체 티커/섹터/시총/볼륨/종가/변동률/종목명
     try:
         stocks = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
     except Exception as e:
@@ -180,7 +260,8 @@ def get_sp500_top_bottom_movers():
         return pd.DataFrame(), pd.DataFrame()
     tickers = stocks['Symbol'].unique().tolist()
     tickers = [t.replace('.', '-') for t in tickers]
-    # 데이터 적재 (아래에서 볼륨/시가총액/변동률/종가 모두 추출)
+    name_map = dict(zip(stocks['Symbol'].str.replace('.', '-'), stocks['Security']))
+    sector_map = dict(zip(stocks['Symbol'].str.replace('.', '-'), stocks['GICS Sector']))
     df = yf.download(tickers, period="5d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
     results = []
     for t in tickers:
@@ -200,44 +281,86 @@ def get_sp500_top_bottom_movers():
                 "종가": curr_close,
                 "전일수익률(%)": ret,
                 "Volume": volume,
-                "시가총액": mktcap
+                "시가총액": mktcap,
+                "종목명": name_map.get(t, ""),
+                "섹터명": sector_map.get(t, "")
             })
         except Exception:
             continue
     movers = pd.DataFrame(results)
     movers = movers.dropna(subset=["전일수익률(%)"])
+    movers['전일수익률(%)'] = movers['전일수익률(%)'].round(2)
     top10 = movers.sort_values("전일수익률(%)", ascending=False).head(10)
     bottom10 = movers.sort_values("전일수익률(%)", ascending=True).head(10)
     return top10, bottom10
 
-with st.sidebar:
-    st.header("설정")
-    idx_months = st.slider("주요 주가지수 Normalized 기간 (개월)", 3, 36, 6)
-    sector_months = st.slider("섹터 Normalized 기간 (개월)", 3, 36, 6)
-    style_months = st.slider("스타일 ETF Normalized 기간 (개월)", 3, 36, 6)
-    news_cnt = st.slider("뉴스 헤드라인 개수 (티커별)", 1, 5, 3)
+def colorize(val):
+    try:
+        v = float(val.strip('%'))
+    except Exception:
+        return ''
+    if np.isnan(v):
+        return ''
+    # 빨강(음수)~흰색(0)~초록(양수) 계조
+    if v > 0:
+        r, g, b = 0, int(180 + v*2) if v < 40 else 255, 0
+    else:
+        r, g, b = int(180 + v*2) if v > -40 else 255, 0, 0
+    r = min(max(r, 0), 255)
+    g = min(max(g, 0), 255)
+    return f'background-color: rgb({r},{g},{b},0.5)'
 
+# ----------------- 본문 -----------------
 if st.button("전일 시장 Update", type="primary"):
     with st.spinner("데이터 불러오는 중..."):
         st.subheader("📊 주식시장 성과")
         stock_perf = get_perf_table(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        st.dataframe(stock_perf.set_index('자산명'), use_container_width=True, height=350)
+        stock_perf_numeric = get_perf_table_numeric(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        # 히트맵 스타일
+        styled_stock = stock_perf.set_index('자산명').style.apply(
+            lambda x: ["" if c == '현재값' else colorize(v) for c, v in zip(stock_perf.columns, x)], axis=1, subset=['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        )
+        st.dataframe(styled_stock, use_container_width=True, height=450)
 
         st.subheader("📊 채권시장 성과")
         bond_perf = get_perf_table(BOND_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        st.dataframe(bond_perf.set_index('자산명'), use_container_width=True, height=250)
+        bond_perf_numeric = get_perf_table_numeric(BOND_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        styled_bond = bond_perf.set_index('자산명').style.apply(
+            lambda x: ["" if c == '현재값' else colorize(v) for c, v in zip(bond_perf.columns, x)], axis=1, subset=['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        )
+        st.dataframe(styled_bond, use_container_width=True, height=420)
 
         st.subheader("📊 통화시장 성과")
         curr_perf = get_perf_table(CURRENCY, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        st.dataframe(curr_perf.set_index('자산명'), use_container_width=True, height=200)
+        curr_perf_numeric = get_perf_table_numeric(CURRENCY, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        styled_curr = curr_perf.set_index('자산명').style.apply(
+            lambda x: ["" if c == '현재값' else colorize(v) for c, v in zip(curr_perf.columns, x)], axis=1, subset=['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        )
+        st.dataframe(styled_curr, use_container_width=True, height=200)
 
-        st.subheader("📊 비트코인 성과")
+        st.subheader("📊 암호화폐 성과")
         crypto_perf = get_perf_table(CRYPTO, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        st.dataframe(crypto_perf.set_index('자산명'), use_container_width=True, height=80)
+        crypto_perf_numeric = get_perf_table_numeric(CRYPTO, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        styled_crypto = crypto_perf.set_index('자산명').style.apply(
+            lambda x: ["" if c == '현재값' else colorize(v) for c, v in zip(crypto_perf.columns, x)], axis=1, subset=['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        )
+        st.dataframe(styled_crypto, use_container_width=True, height=180)
 
         st.subheader("📊 스타일 ETF 성과")
         style_perf = get_perf_table(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        st.dataframe(style_perf.set_index('자산명'), use_container_width=True, height=250)
+        style_perf_numeric = get_perf_table_numeric(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        styled_style = style_perf.set_index('자산명').style.apply(
+            lambda x: ["" if c == '현재값' else colorize(v) for c, v in zip(style_perf.columns, x)], axis=1, subset=['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        )
+        st.dataframe(styled_style, use_container_width=True, height=250)
+
+        st.subheader("📊 섹터 ETF 성과")
+        sector_perf = get_perf_table(SECTOR_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        sector_perf_numeric = get_perf_table_numeric(SECTOR_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
+        styled_sector = sector_perf.set_index('자산명').style.apply(
+            lambda x: ["" if c == '현재값' else colorize(v) for c, v in zip(sector_perf.columns, x)], axis=1, subset=['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+        )
+        st.dataframe(styled_sector, use_container_width=True, height=320)
 
         st.subheader(f"📈 주요 주가지수 수익률 (최근 {idx_months}개월)")
         norm_idx = get_normalized_prices(STOCK_ETFS, months=idx_months)
@@ -273,7 +396,7 @@ if st.button("전일 시장 Update", type="primary"):
         st.plotly_chart(fig3, use_container_width=True)
 
         st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
-        headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD']
+        headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD', 'ETH-USD']
         news_df = get_news_headlines(headline_tickers, news_cnt)
         if not news_df.empty:
             for _, row in news_df.iterrows():
@@ -287,15 +410,25 @@ if st.button("전일 시장 Update", type="primary"):
             st.info("S&P500 Top/Bottom movers를 불러올 수 없습니다. 인터넷 연결 및 lxml 패키지를 확인하세요.")
         else:
             st.markdown("**Top 10 상승**")
-            st.dataframe(top10.set_index('Ticker'), use_container_width=True, height=320)
+            st.dataframe(top10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']], use_container_width=True, height=380)
             st.markdown("**Top 10 하락**")
-            st.dataframe(bottom10.set_index('Ticker'), use_container_width=True, height=320)
+            st.dataframe(bottom10.set_index('Ticker')[['종목명', '섹터명', '종가', '전일수익률(%)', 'Volume', '시가총액']], use_container_width=True, height=380)
+            
+            # 전일수익률 차트 (막대, x축: Ticker)
             col1, col2 = st.columns(2)
             with col1:
-                st.plotly_chart(px.bar(top10, x='종가', y='전일수익률(%)', text='전일수익률(%)', hover_data=['Volume', '시가총액'],
-                                       orientation='h', title="Top10 상승폭(%)", color='전일수익률(%)', color_continuous_scale='Teal'), use_container_width=True)
+                fig_top = px.bar(top10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
+                                 hover_data=['종목명', '섹터명', '종가', 'Volume', '시가총액'],
+                                 title="Top10 상승폭(%)", color_continuous_scale='Teal')
+                fig_top.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                fig_top.update_layout(xaxis_title='티커', yaxis_title='전일수익률(%)', template='plotly_white', height=340)
+                st.plotly_chart(fig_top, use_container_width=True)
             with col2:
-                st.plotly_chart(px.bar(bottom10, x='종가', y='전일수익률(%)', text='전일수익률(%)', hover_data=['Volume', '시가총액'],
-                                       orientation='h', title="Top10 하락폭(%)", color='전일수익률(%)', color_continuous_scale='OrRd'), use_container_width=True)
+                fig_bot = px.bar(bottom10, x='Ticker', y='전일수익률(%)', text='전일수익률(%)', color='전일수익률(%)',
+                                 hover_data=['종목명', '섹터명', '종가', 'Volume', '시가총액'],
+                                 title="Top10 하락폭(%)", color_continuous_scale='OrRd')
+                fig_bot.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                fig_bot.update_layout(xaxis_title='티커', yaxis_title='전일수익률(%)', template='plotly_white', height=340)
+                st.plotly_chart(fig_bot, use_container_width=True)
 else:
     st.info("왼쪽 설정 후 '전일 시장 Update' 버튼을 눌러주세요.")
