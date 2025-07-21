@@ -163,6 +163,19 @@ def get_perf_table(label2ticker, start, end):
     df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return df_r
 
+def get_normalized_prices(label2ticker, months=6):
+    tickers = list(label2ticker.values())
+    end = datetime.now().date()
+    start = end - timedelta(days=int(months)*31)
+    df = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
+    if isinstance(df, pd.Series):
+        df = df.to_frame()
+    df = df.ffill()
+    df = df[tickers]
+    norm_df = df / df.iloc[0] * 100
+    norm_df.columns = [k for k in label2ticker]
+    return norm_df
+
 def get_news_headlines(tickers, limit=3):
     news_list = []
     for ticker_symbol in tickers:
@@ -200,7 +213,7 @@ def get_sp500_top_bottom_movers():
         stocks = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
     except Exception as e:
         st.error("S&P500 구성종목 목록을 가져오려면 인터넷 및 lxml 패키지가 필요합니다.")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     tickers = stocks['Symbol'].unique().tolist()
     tickers = [t.replace('.', '-') for t in tickers]
     name_map = dict(zip(stocks['Symbol'].str.replace('.', '-'), stocks['Security']))
@@ -209,7 +222,7 @@ def get_sp500_top_bottom_movers():
         df = yf.download(tickers, period="5d", interval="1d", group_by="ticker", progress=False, auto_adjust=True)
     except Exception as e:
         st.error("야후 파이낸스에서 S&P500 가격 데이터를 읽는 데 실패했습니다.")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     results = []
     for t in tickers:
         try:
@@ -236,17 +249,14 @@ def get_sp500_top_bottom_movers():
             continue
     movers = pd.DataFrame(results)
     if movers.empty or "전일수익률(%)" not in movers.columns:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     movers = movers.dropna(subset=["전일수익률(%)"])
     movers['전일수익률(%)'] = movers['전일수익률(%)'].round(2)
-    # 포맷 적용
     movers['Volume'] = movers['Volume'].apply(lambda x: f"{int(x):,}" if pd.notnull(x) else "")
-    # 시가총액: 1,000,000으로 나누고, 천 단위 콤마
     movers['시가총액($, 백만)'] = movers['시가총액'].apply(lambda x: f"{int(x/1_000_000):,}" if pd.notnull(x) and x>0 else "")
     movers = movers.drop(columns=['시가총액'])
     top10 = movers.sort_values("전일수익률(%)", ascending=False).head(10)
     bottom10 = movers.sort_values("전일수익률(%)", ascending=True).head(10)
-    # 차트용 데이터: Ticker, 전일수익률(%)만
     top10_chart = top10[['Ticker', '전일수익률(%)']].copy()
     bottom10_chart = bottom10[['Ticker', '전일수익률(%)']].copy()
     return top10, bottom10, top10_chart, bottom10_chart
