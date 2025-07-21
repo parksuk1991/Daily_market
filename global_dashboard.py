@@ -93,6 +93,19 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
+def get_normalized_prices(label2ticker, months=6):
+    tickers = list(label2ticker.values())
+    end = datetime.now().date()
+    start = end - timedelta(days=months*31)
+    df = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
+    if isinstance(df, pd.Series):
+        df = df.to_frame()
+    df = df.ffill()
+    df = df[tickers]
+    norm_df = df / df.iloc[0] * 100
+    norm_df.columns = [k for k in label2ticker]
+    return norm_df
+    
 def get_perf_table(label2ticker, start, end):
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
