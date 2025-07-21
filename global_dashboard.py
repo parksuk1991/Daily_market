@@ -20,7 +20,7 @@ st.set_page_config(
 
 # ----------------- 사이드바 디자인 개선 -----------------
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/000000/worldwide-location.png", width=90)
+    st.image("https://img.icons8.com/color/2x/search.png", width=90)
     st.markdown("<h2 style='color:#008B8B; text-align:center;'>글로벌 대시보드 설정</h2>", unsafe_allow_html=True)
     st.markdown("---")
     idx_months = st.slider("📅 주요 주가지수 Normalized 기간 (개월)", 3, 36, 6, help="주요 주가지수 Normalized 수익률의 기간입니다")
@@ -130,11 +130,15 @@ def get_perf_table(label2ticker, start, end):
         for k, val in periods.items():
             try:
                 if k == 'MTD':
-                    base = series[:last][series.index.month == last.month].iloc[0]
+                    # MTD: 월초 첫 영업일 종가 기준(현재 일자의 월과 동일한 index 중 첫 번째)
+                    base_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
+                    base = series.loc[base_idx]
                 elif k == 'YTD':
-                    base = series[:last][series.index.year == last.year].iloc[0]
+                    # YTD: 연초 첫 영업일 종가 기준(현재 일자의 연과 동일한 index 중 첫 번째)
+                    base_idx = series.index[(series.index.year == last.year)][0]
+                    base = series.loc[base_idx]
                 elif k == '1W':
-                    # 1주일 전의 실제 영업일(5일 전이 데이터가 없을 수 있음) 보정
+                    # 1주일 전 영업일 찾기(현재일자에서 7일 이내 중 가장 가까운 지난 영업일)
                     idx = series.index.get_loc(last)
                     found = False
                     for back in range(1, 8):  # 최대 7영업일 전까지 시도
@@ -150,7 +154,7 @@ def get_perf_table(label2ticker, start, end):
                         base = series.iloc[-val-1]
                     else:
                         base = series.iloc[0]
-                if base and row['현재값']:
+                if base is not None and row['현재값'] is not None and base != 0:
                     row[k] = (row['현재값']/base - 1) * 100
                 else:
                     row[k] = np.nan
@@ -198,9 +202,11 @@ def get_perf_table_numeric(label2ticker, start, end):
         for k, val in periods.items():
             try:
                 if k == 'MTD':
-                    base = series[:last][series.index.month == last.month].iloc[0]
+                    base_idx = series.index[(series.index.month == last.month) & (series.index.year == last.year)][0]
+                    base = series.loc[base_idx]
                 elif k == 'YTD':
-                    base = series[:last][series.index.year == last.year].iloc[0]
+                    base_idx = series.index[(series.index.year == last.year)][0]
+                    base = series.loc[base_idx]
                 elif k == '1W':
                     idx = series.index.get_loc(last)
                     found = False
@@ -217,7 +223,7 @@ def get_perf_table_numeric(label2ticker, start, end):
                         base = series.iloc[-val-1]
                     else:
                         base = series.iloc[0]
-                if base and curr_val:
+                if base is not None and curr_val is not None and base != 0:
                     row[k] = (curr_val/base - 1) * 100
                 else:
                     row[k] = np.nan
@@ -319,40 +325,8 @@ def get_sp500_top_bottom_movers():
     bottom10 = movers.sort_values("전일수익률(%)", ascending=True).head(10)
     return top10, bottom10
 
-def colorize_vertical_heatmap(df, cols):
-    # 각 컬럼별로 min/max 기준으로 컬러를 정하고 모든 행에 적용
-    styled = df.copy()
-    for col in cols:
-        try:
-            vals = df[col].str.replace("%", "").astype(float)
-        except Exception:
-            vals = pd.Series([np.nan]*len(df))
-        minv = vals.min(skipna=True)
-        maxv = vals.max(skipna=True)
-        rng = maxv - minv
-        colors = []
-        for v in vals:
-            if np.isnan(v):
-                colors.append("")
-                continue
-            # 빨강(최저)~흰~초록(최고) linear mapping
-            if rng == 0:
-                ratio = 0.5
-            else:
-                ratio = (v - minv) / rng
-            if v >= 0:
-                r, g, b = int((1-ratio)*220), int(180 + ratio*75), int((1-ratio)*220)
-            else:
-                r, g, b = int(220 + ratio*35), int((1-ratio)*180), int((1-ratio)*220)
-            r = min(max(r, 0), 255)
-            g = min(max(g, 0), 255)
-            b = min(max(b, 0), 255)
-            colors.append(f"background-color: rgb({r},{g},{b},0.6)")
-        styled[col] = colors
-    return styled
-
-def make_vertical_styler(df, cols):
-    # streamlit styler용: 각 열별로 색상 반환
+def make_vertical_styler_colwise_minmax(df, cols):
+    # 각 열별로 min/max 기준으로 컬러를 정하고 모든 행에 적용(열별 독립적 히트맵)
     def stylefn(x):
         result = []
         for col in x.index:
@@ -360,28 +334,28 @@ def make_vertical_styler(df, cols):
                 result.append("")
                 continue
             try:
-                vals = x[col].replace("%","")
-                v = float(vals)
+                v = float(x[col].replace("%",""))
             except Exception:
                 result.append("")
                 continue
-            # 컬럼별 min/max
             col_vals = df[col].str.replace("%","").astype(float)
             minv = col_vals.min(skipna=True)
             maxv = col_vals.max(skipna=True)
             rng = maxv - minv
+            if pd.isnull(v):
+                result.append("")
+                continue
+            # 빨강(최저)~흰~초록(최고) linear mapping
             if rng == 0:
                 ratio = 0.5
             else:
                 ratio = (v - minv) / rng
-            if v >= 0:
-                r, g, b = int((1-ratio)*220), int(180 + ratio*75), int((1-ratio)*220)
-            else:
-                r, g, b = int(220 + ratio*35), int((1-ratio)*180), int((1-ratio)*220)
-            r = min(max(r, 0), 255)
-            g = min(max(g, 0), 255)
-            b = min(max(b, 0), 255)
-            result.append(f"background-color: rgb({r},{g},{b},0.6)")
+            # green for high, red for low, white for center
+            r = int((1 - ratio) * 255 + ratio * 220)
+            g = int((1 - ratio) * 255 + ratio * 255)
+            b = int((1 - ratio) * 255 + ratio * 220)
+            # slightly more vivid
+            result.append(f"background-color: rgb({r},{g},{b},0.7)")
         return result
     return stylefn
 
@@ -390,46 +364,44 @@ if st.button("전일 시장 Update", type="primary"):
         st.subheader("📊 주식시장 성과")
         stock_perf = get_perf_table(STOCK_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
-        # 각 열별로 vertical heatmap 적용(styler로)
         st.dataframe(
-            stock_perf.set_index('자산명').style.apply(make_vertical_styler(stock_perf.set_index('자산명'), perf_cols), axis=1),
+            stock_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(stock_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=470
         )
 
         st.subheader("📊 채권시장 성과")
         bond_perf = get_perf_table(BOND_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            bond_perf.set_index('자산명').style.apply(make_vertical_styler(bond_perf.set_index('자산명'), perf_cols), axis=1),
+            bond_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(bond_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=420
         )
 
         st.subheader("📊 통화시장 성과")
         curr_perf = get_perf_table(CURRENCY, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            curr_perf.set_index('자산명').style.apply(make_vertical_styler(curr_perf.set_index('자산명'), perf_cols), axis=1),
+            curr_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(curr_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=200
         )
 
         st.subheader("📊 암호화폐 성과")
         crypto_perf = get_perf_table(CRYPTO, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            crypto_perf.set_index('자산명').style.apply(make_vertical_styler(crypto_perf.set_index('자산명'), perf_cols), axis=1),
+            crypto_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(crypto_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=180
         )
 
         st.subheader("📊 스타일 ETF 성과")
         style_perf = get_perf_table(STYLE_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
         st.dataframe(
-            style_perf.set_index('자산명').style.apply(make_vertical_styler(style_perf.set_index('자산명'), perf_cols), axis=1),
+            style_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(style_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=250
         )
 
         st.subheader("📊 섹터 ETF 성과")
         sector_perf = get_perf_table(SECTOR_ETFS, datetime.now().date() - timedelta(days=1100), datetime.now().date())
-        # 전체 행이 항상 한 화면에 다 보이도록 height 자동 조정
         sector_height = int(43 * sector_perf.shape[0] + 42)
         st.dataframe(
-            sector_perf.set_index('자산명').style.apply(make_vertical_styler(sector_perf.set_index('자산명'), perf_cols), axis=1),
+            sector_perf.set_index('자산명').style.apply(make_vertical_styler_colwise_minmax(sector_perf.set_index('자산명'), perf_cols), axis=1),
             use_container_width=True, height=sector_height
         )
 
