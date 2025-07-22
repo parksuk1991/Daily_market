@@ -72,8 +72,8 @@ with col_btn:
     button_style = """
     <style>
     div.stButton > button {
-        width: 70px !important;
-        height: 100px !important;
+        width: 150px !important;
+        height: 200px !important;
         font-size: 16px !important;
         font-weight: bold !important;
         white-space: pre-line !important;
