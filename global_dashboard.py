@@ -370,11 +370,11 @@ if update_clicked:
     )
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.subheader("📰 섹터 ETF별 최상위 보유종목 뉴스")
+    st.subheader("📰 주요 종목 헤드라인")
     for label, etf in SECTOR_ETFS.items():
         top = get_top_holding(etf)
         if top:
-            st.write(f"#### {label} → 최다 비중 종목: **{top}**")
+            st.write(f"**{top}**")
             news = get_news_for_ticker(top, limit=1)
             if news:
                 art = news[0]
