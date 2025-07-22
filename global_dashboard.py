@@ -18,35 +18,40 @@ st.set_page_config(
     layout="wide"
 )
 
-# (좌측) 사이드바 완전 삭제됨
-
 st.title("🌐 글로벌 시황 대시보드")
 
-# -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
+# -------------------- 상단: 제목+설명 / 달착륙 이미지+크레딧 ---------------------
 col_title, col_img = st.columns([3, 2])
 with col_title:
     st.markdown("#### 전일 시장 데이터 및 기간별 성과")
 with col_img:
-    # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 예시 이미지 URL
+    # 닐 암스트롱 달 착륙 사진 (퍼블릭 도메인, NASA)
     st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/a/a1/Aldrin_Apollo_11.jpg",
+        "https://www.hq.nasa.gov/alsj/a11/AS11-40-5903HRedit.jpg",
         width=110,
         caption=None
     )
     st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
 
-# ==================== 경고 메시지 출력 ====================
-st.warning("⚠️ 차트 구간(수익률 기간) 설정 후 '전일 시장 Update' 버튼을 눌러주세요!")
-
-# ============= 본문 중간(성과 차트 위)에 Normalized 기간 설정 UI & 버튼을 나란히 ==============
+# ============= 차트 구간 설정 슬라이더 및 안내문구/버튼 배치 ==============
 st.markdown("---")
-st.markdown("##### 📈 차트 구간 설정 및 데이터 업데이트")
-col_slider, col_btn = st.columns([3,2])
+st.markdown("##### 📈 차트 구간 설정 및 데이터 업데이트", help="차트에 적용할 수익률 기간을 설정하고 데이터를 업데이트하세요.")
+
+# 슬라이더와 버튼을 더 짧게, 안내문구를 버튼과 같은 줄에 수평 배치
+col_slider, col_warn, col_btn = st.columns([1, 3, 1])
 with col_slider:
     normalized_months = st.slider(
-        "차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
-        3, 36, 12,
-        help="모든 차트에 적용될 정규화 수익률 기간입니다."
+        "N개월", 3, 36, 12,
+        help="모든 차트에 적용될 정규화 수익률 기간입니다.",
+        label_visibility="visible",
+        key="norm_months_slider"
+    )
+with col_warn:
+    st.markdown(
+        "<div style='display:flex;align-items:center;height:100%;justify-content:center;'>"
+        "<span style='color:#e25822;font-weight:bold;font-size:15px;'>⚠️ 차트 구간(수익률 기간) 설정 후 '전일 시장 Update' 버튼을 눌러주세요!</span>"
+        "</div>",
+        unsafe_allow_html=True,
     )
 with col_btn:
     update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
@@ -342,4 +347,4 @@ if update_clicked:
             st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
 else:
-    st.info("아래에서 차트 구간을 설정한 후 '전일 시장 Update' 버튼을 눌러주세요.")
+    st.info("차트 구간을 설정한 후 '전일 시장 Update' 버튼을 눌러주세요.")
