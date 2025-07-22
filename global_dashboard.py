@@ -8,6 +8,7 @@ import plotly.express as px
 import requests
 from PIL import Image
 from io import BytesIO
+from yahooquery import Ticker  # 추가
 
 # lxml ImportError 방지
 try:
@@ -242,37 +243,35 @@ def get_normalized_prices(label2ticker, months=6):
     norm_df.columns = [k for k in label2ticker]
     return norm_df
 
-def get_news_headlines(tickers, limit=3):
-    news_list = []
-    for ticker_symbol in tickers:
-        ticker = yf.Ticker(ticker_symbol)
-        try:
-            news = ticker.news if hasattr(ticker, "news") else ticker.get_news()
-            for article in news[:limit]:
-                content = article.get('content', {})
-                title = article.get('title') or content.get('title')
-                pubdate = article.get('providerPublishTime') or content.get('pubDate')
-                if pubdate:
-                    if isinstance(pubdate, int):
-                        date = datetime.fromtimestamp(pubdate)
-                    else:
-                        try:
-                            date = pd.to_datetime(pubdate)
-                        except Exception:
-                            date = None
-                else:
-                    date = None
-                news_list.append({
-                    '티커': ticker_symbol,
-                    '일자': date.strftime('%Y-%m-%d') if date else '',
-                    '헤드라인': title
-                })
-        except Exception:
-            continue
-    df = pd.DataFrame(news_list)
-    if not df.empty:
-        df = df.sort_values('일자', ascending=False)
-    return df
+def get_top_holding(etf_ticker):
+    try:
+        t = Ticker(etf_ticker)
+        info = t.fund_holding_info or {}
+        holdings = info.get(etf_ticker, {}).get('holdings', [])
+        if holdings:
+            top = max(holdings, key=lambda x: x.get('holdingPercent', 0))
+            return top['symbol']
+        else:
+            return None
+    except Exception:
+        return None
+
+# ======= [추가] 종목별 뉴스 추출 함수 =======
+def get_news_for_ticker(ticker_symbol, limit=1):
+    y = yf.Ticker(ticker_symbol)
+    try:
+        news = y.news if hasattr(y, 'news') else y.get_news()
+    except Exception:
+        news = []
+    result = []
+    for art in news[:limit]:
+        title = art.get('title') or art.get('content', {}).get('title')
+        ts = art.get('providerPublishTime')
+        date = datetime.fromtimestamp(ts).strftime('%Y-%m-%d') if isinstance(ts, int) else ''
+        if title:
+            result.append({'ticker': ticker_symbol, 'date': date, 'title': title})
+    return result
+
 
 def colorize_return(val):
     try:
@@ -371,13 +370,18 @@ if update_clicked:
     )
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
-    headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD', 'ETH-USD']
-    news_df = get_news_headlines(headline_tickers, 3)
-    if not news_df.empty:
-        for _, row in news_df.iterrows():
-            st.markdown(f"- **[{row['티커']}]** {row['일자']}: {row['헤드라인']}")
-    else:
-        st.info("뉴스 헤드라인을 가져올 수 없습니다.")
+    st.subheader("📰 섹터 ETF별 최상위 보유종목 뉴스")
+    for label, etf in SECTOR_ETFS.items():
+        top = get_top_holding(etf)
+        if top:
+            st.write(f"#### {label} → 최다 비중 종목: **{top}**")
+            news = get_news_for_ticker(top, limit=1)
+            if news:
+                art = news[0]
+                st.markdown(f"- **[{art['ticker']}]** {art['date']}: {art['title']}")
+            else:
+                st.write("- 뉴스 없음")
+        else:
+            st.write(f"- {label}: 보유종목 정보 없음")
 
 # else 블록 삭제: 안내문구는 사이드바에서 항상 노출
