@@ -68,24 +68,7 @@ with col_slider:
 
 
 with col_btn:
-    # 버튼을 슬라이더와 같은 세로 높이로 맞추기 위해 margin/padding/height 스타일 조정
-    button_style = """
-    <style>
-    div.stButton > button {
-        width: 500px !important;
-        height: 120px !important;
-        font-size: 16px !important;
-        font-weight: bold !important;
-        white-space: pre-line !important;
-        margin-top: 12px !important;
-        margin-bottom: 12px !important;
-        padding-top: 20px !important;
-        padding-bottom: 20px !important;
-    }
-    </style>
-    """
-    st.markdown(button_style, unsafe_allow_html=True)
-    update_clicked = st.button("전일 시장\nUpdate", key="main_update_btn")
+    update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
 
 # =========== 자산 정의 ================
 STOCK_ETFS = {
