@@ -24,7 +24,7 @@ st.set_page_config(
 st.title("🌐 글로벌 시장 대시보드")
 
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
-col_title, col_img = st.columns([3, 2])
+col_title, col_img = st.columns([2, 1])
 with col_title:
     st.markdown("#### 전일 및 기간별 주요 시장 성과")
 with col_img:
