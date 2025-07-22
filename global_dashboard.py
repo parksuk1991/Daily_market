@@ -54,7 +54,7 @@ st.markdown("---")
 st.markdown("##### 📈 차트 구간 설정")
 
 # 슬라이더와 버튼, 안내문구를 수평 배치, 버튼 가로폭 좁고 세로폭은 슬라이더와 맞춤
-col_slider, col_warn, col_btn = st.columns([3, 2, 1])
+col_slider, col_btn = st.columns([3, 1])
 
 with col_slider:
     # 슬라이더의 세로 크기와 일치시키기 위해 placeholder 사용
@@ -65,7 +65,6 @@ with col_slider:
         help="모든 차트에 적용될 정규화 수익률 기간입니다.",
         key="norm_months_slider"
     )
-
 
 with col_btn:
     update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
