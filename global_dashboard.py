@@ -125,7 +125,6 @@ CRYPTO = {
     '이더리움(ETH-USD)': 'ETH-USD',
     '솔라나(SOL-USD)': 'SOL-USD',
     '리플(XRP-USD)': 'XRP-USD',
-    '폴리곤(MATIC-USD)': 'MATIC-USD'
 }
 SECTOR_ETFS = {
     'IT (XLK)': 'XLK',
