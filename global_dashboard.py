@@ -5,6 +5,9 @@ import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
+import requests
+from PIL import Image
+from io import BytesIO
 
 # lxml ImportError 방지
 try:
@@ -18,8 +21,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# (좌측) 사이드바 완전 삭제됨
-
 st.title("🌐 글로벌 시장 대시보드")
 
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
@@ -27,26 +28,71 @@ col_title, col_img = st.columns([3, 2])
 with col_title:
     st.markdown("#### 전일 및 기간별 주요 시장 성과")
 with col_img:
-    # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 예시 이미지 URL
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/a/a1/Aldrin_Apollo_11.jpg",
-        width=110,
-        caption=None
-    )
+    # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 다운로드 실패시 대체 아이콘 제공
+    image_url = "https://www.hq.nasa.gov/alsj/a11/AS11-40-5903HRedit.jpg"
+    fallback_icon = "https://cdn-icons-png.flaticon.com/512/3211/3211357.png"  # 우주인 아이콘 (flaticon)
+    img_displayed = False
+    try:
+        response = requests.get(image_url, timeout=5)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content))
+        st.image(img, width=110, caption=None)
+        img_displayed = True
+    except Exception:
+        try:
+            response = requests.get(fallback_icon, timeout=5)
+            response.raise_for_status()
+            img = Image.open(BytesIO(response.content))
+            st.image(img, width=90, caption=None)
+            img_displayed = True
+        except Exception:
+            st.info("이미지를 불러올 수 없습니다.")
     st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
 
-# ============= 본문 중간(성과 차트 위)에 Normalized 기간 설정 UI & 버튼을 나란히 ==============
+# ===================== 차트 구간 설정 및 전일 시장 업데이트 버튼 =====================
 st.markdown("---")
 st.markdown("##### 📈 차트 구간 설정")
-col_slider, col_btn = st.columns([4,3])
+
+# 슬라이더와 버튼, 안내문구를 수평 배치, 버튼 가로폭 좁고 세로폭은 슬라이더와 맞춤
+col_slider, col_warn, col_btn = st.columns([3, 6, 1])
+
 with col_slider:
-    normalized_months = st.slider(
+    # 슬라이더의 세로 크기와 일치시키기 위해 placeholder 사용
+    slider_placeholder = st.empty()
+    normalized_months = slider_placeholder.slider(
         "차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
         3, 36, 12,
-        help="모든 차트에 적용될 정규화 수익률 기간입니다."
+        help="모든 차트에 적용될 정규화 수익률 기간입니다.",
+        key="norm_months_slider"
     )
+
+with col_warn:
+    st.markdown(
+        "<div style='display:flex;align-items:center;height:100%;justify-content:center;'>"
+        "<span style='color:#e25822;font-weight:bold;font-size:15px;'>⚠️ 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
 with col_btn:
-    update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
+    # 버튼을 슬라이더와 같은 세로 높이로 맞추기 위해 margin/padding/height 스타일 조정
+    button_style = """
+    <style>
+    div.stButton > button {
+        width: 70px !important;
+        height: 100px !important;
+        font-size: 16px !important;
+        font-weight: bold !important;
+        white-space: pre-line !important;
+        margin-top: 12px !important;
+        margin-bottom: 12px !important;
+        padding-top: 20px !important;
+        padding-bottom: 20px !important;
+    }
+    </style>
+    """
+    st.markdown(button_style, unsafe_allow_html=True)
+    update_clicked = st.button("전일 시장\nUpdate", key="main_update_btn")
 
 # =========== 자산 정의 ================
 STOCK_ETFS = {
