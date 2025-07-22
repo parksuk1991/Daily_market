@@ -24,7 +24,7 @@ st.set_page_config(
 st.title("🌐 글로벌 시장 대시보드")
 
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
-col_title, col_img = st.columns([7, 1])
+col_title, col_img = st.columns([9, 1])
 with col_title:
     st.markdown("#### 전일 및 기간별 주요 시장 성과")
 with col_img:
@@ -66,13 +66,6 @@ with col_slider:
         key="norm_months_slider"
     )
 
-with col_warn:
-    st.markdown(
-        "<div style='display:flex;align-items:center;height:100%;justify-content:center;'>"
-        "<span style='color:#e25822;font-weight:bold;font-size:15px;'>⚠️ 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!</span>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
 with col_btn:
     # 버튼을 슬라이더와 같은 세로 높이로 맞추기 위해 margin/padding/height 스타일 조정
