@@ -54,7 +54,7 @@ st.markdown("---")
 st.markdown("##### 📈 차트 구간 설정")
 
 # 슬라이더와 버튼, 안내문구를 수평 배치, 버튼 가로폭 좁고 세로폭은 슬라이더와 맞춤
-col_slider, col_warn, col_btn = st.columns([3, 6, 1])
+col_slider, col_warn, col_btn = st.columns([3, 2, 1])
 
 with col_slider:
     # 슬라이더의 세로 크기와 일치시키기 위해 placeholder 사용
@@ -78,7 +78,7 @@ with col_btn:
         font-weight: bold !important;
         white-space: pre-line !important;
         margin-top: 12px !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 12px !important;
         padding-top: 20px !important;
         padding-bottom: 20px !important;
     }
