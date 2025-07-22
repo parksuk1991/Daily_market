@@ -72,13 +72,13 @@ with col_btn:
     button_style = """
     <style>
     div.stButton > button {
-        width: 150px !important;
-        height: 200px !important;
+        width: 500px !important;
+        height: 120px !important;
         font-size: 16px !important;
         font-weight: bold !important;
         white-space: pre-line !important;
         margin-top: 12px !important;
-        margin-bottom: 12px !important;
+        margin-bottom: 10px !important;
         padding-top: 20px !important;
         padding-bottom: 20px !important;
     }
