@@ -376,7 +376,7 @@ if update_clicked:
         top_holdings = get_top_holdings(etf, n=3)
         if top_holdings:
             # 섹터명에서 괄호와 ETF코드 제거 → "IT (XLK)" → "IT섹터" 등 가공
-            sector_name = label.split()[0] + "섹터"
+            sector_name = label.split()[0] + " 섹터"
             holding_names = [name for _, name in top_holdings]
             holding_syms = [sym for sym, _ in top_holdings]
             st.write(f"#### {sector_name} 주요 종목: {', '.join(holding_names)}")
