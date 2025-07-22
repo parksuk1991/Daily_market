@@ -47,8 +47,8 @@ with col_img_credit:
         except Exception:
             st.info("이미지를 불러올 수 없습니다.")
     st.markdown(
-        "<div style='margin-top: -10px; text-align:center;'>"
-        "<span style='font-size:0.8rem; color:#888;'>Made by parksuk1991</span>"
+        "<div style='margin-top: -5px; text-align:center;'>"
+        "<span style='font-size:1.0rem; color:#888;'>Made by parksuk1991</span>"
         "</div>",
         unsafe_allow_html=True
     )
@@ -71,12 +71,12 @@ with st.sidebar:
         help="모든 차트에 적용될 정규화 수익률 기간입니다.",
         key="norm_months_slider"
     )
-    update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
+    update_clicked = st.button("Update", type="primary", use_container_width=True)
     st.markdown(
         """
         <div style='text-align:center; margin-top:20px;'>
             <span style='font-size:0.85rem; color:#d9534f; font-weight:500;'>
-                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'전일 시장 Update' 버튼을 눌러주세요!
+                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼을 눌러주세요!
             </span>
         </div>
         """,
