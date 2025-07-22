@@ -35,14 +35,14 @@ with col_img_credit:
         response = requests.get(image_url, timeout=5)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        st.image(img, width=200, caption=None)
+        st.image(img, width=180, caption=None)
         img_displayed = True
     except Exception:
         try:
             response = requests.get(fallback_icon, timeout=5)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
-            st.image(img, width=200, caption=None)
+            st.image(img, width=180, caption=None)
             img_displayed = True
         except Exception:
             st.info("이미지를 불러올 수 없습니다.")
@@ -53,7 +53,7 @@ with col_img_credit:
         unsafe_allow_html=True
     )
     st.markdown(
-        '<div style="text-align: center; margin-bottom: 10px;">'
+        '<div style="text-align: center; margin-bottom: 6px;">'
         'Data 출처: <a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a>'
         '</div>',
         unsafe_allow_html=True
