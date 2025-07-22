@@ -36,35 +36,39 @@ with col_img:
         response = requests.get(image_url, timeout=5)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        st.image(img, width=110, caption=None)
+        st.image(img, width=180, caption=None)  # 이미지 크기 키움
         img_displayed = True
     except Exception:
         try:
             response = requests.get(fallback_icon, timeout=5)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
-            st.image(img, width=90, caption=None)
+            st.image(img, width=140, caption=None)  # 대체 아이콘도 크기 키움
             img_displayed = True
         except Exception:
             st.info("이미지를 불러올 수 없습니다.")
-    st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:1.3rem; color:#888; font-weight:600;'>Made by parksuk1991</div>",
+        unsafe_allow_html=True
+    )  # 크기, 두께 키운 크레딧
 
-# ===================== 차트 구간 설정 및 전일 시장 업데이트 버튼 =====================
-st.markdown("---")
-st.markdown("##### 📈 차트 구간 설정")
-
-# 슬라이더와 버튼, 안내문구를 수평 배치, 버튼 가로폭 좁고 세로폭은 슬라이더와 맞춤
-
-    # 슬라이더의 세로 크기와 일치시키기 위해 placeholder 사용
-slider_placeholder = st.empty()
-normalized_months = slider_placeholder.slider(
-"차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
-3, 36, 12,
-help="모든 차트에 적용될 정규화 수익률 기간입니다.",
-key="norm_months_slider")
-
-
-update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
+# ===================== 차트 구간 설정 및 전일 시장 업데이트 버튼 (사이드바로 이동) =====================
+with st.sidebar:
+    st.markdown("### ⚙️ 대시보드 설정")
+    # 슬라이더와 버튼, 안내문구를 사이드바에 배치
+    normalized_months = st.slider(
+        "차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
+        3, 36, 12,
+        help="모든 차트에 적용될 정규화 수익률 기간입니다.",
+        key="norm_months_slider"
+    )
+    update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
+    st.markdown(
+        "<div style='margin-top: 20px; font-size:1.1rem; color:#d9534f; font-weight:600;'>"
+        "⚠️ 위에서 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 # =========== 자산 정의 ================
 STOCK_ETFS = {
@@ -356,5 +360,4 @@ if update_clicked:
         else:
             st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
-else:
-    st.warning("⚠️위에서 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!")
+# else 블록 삭제: 안내문구는 사이드바에서 항상 노출
