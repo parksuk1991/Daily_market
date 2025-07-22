@@ -25,7 +25,7 @@ st.set_page_config(
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
 col_title, col_img_credit = st.columns([7, 1])
 with col_title:
-    st.title("🌐 글로벌 주요 시장 모니터링")
+    st.title("🌐 Global Markets Monitoring")
     #st.markdown("---", unsafe_allow_html=True)
     #st.markdown("####    주요 시장 성과", unsafe_allow_html=True)
 with col_img_credit:
