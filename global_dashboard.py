@@ -38,7 +38,7 @@ with col_img:
 # ============= 본문 중간(성과 차트 위)에 Normalized 기간 설정 UI & 버튼을 나란히 ==============
 st.markdown("---")
 st.markdown("##### 📈 차트 구간 설정 및 데이터 업데이트")
-col_slider, col_btn = st.columns([2,1])
+col_slider, col_btn = st.columns([4,3])
 with col_slider:
     normalized_months = st.slider(
         "차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
