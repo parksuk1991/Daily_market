@@ -344,7 +344,7 @@ if update_clicked:
         fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
     fig1.update_layout(
         xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=400, legend=dict(orientation='h')
+        template="plotly_dark", height=500, legend=dict(orientation='h')
     )
     st.plotly_chart(fig1, use_container_width=True)
 
@@ -355,7 +355,7 @@ if update_clicked:
         fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
     fig2.update_layout(
         xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=400, legend=dict(orientation='h')
+        template="plotly_dark", height=500, legend=dict(orientation='h')
     )
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -366,7 +366,7 @@ if update_clicked:
         fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
     fig3.update_layout(
         xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=400, legend=dict(orientation='h')
+        template="plotly_dark", height=500, legend=dict(orientation='h')
     )
     st.plotly_chart(fig3, use_container_width=True)
 
