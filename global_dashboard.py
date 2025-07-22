@@ -374,7 +374,7 @@ if update_clicked:
     for label, etf in SECTOR_ETFS.items():
         top = get_top_holding(etf)
         if top:
-            st.write(f"**{top}**")
+            st.write(f"#### {label} → 최다 비중 종목: **{top}**")
             news = get_news_for_ticker(top, limit=1)
             if news:
                 art = news[0]
