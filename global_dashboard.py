@@ -261,3 +261,82 @@ if update_clicked:
 
         st.subheader("📊 채권시장")
         bond_perf = get_perf_table_precise(BOND_ETFS)
+        st.dataframe(
+            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=420
+        )
+
+        st.subheader("📊 통화")
+        curr_perf = get_perf_table_precise(CURRENCY)
+        st.dataframe(
+            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=200
+        )
+
+        st.subheader("📊 암호화폐")
+        crypto_perf = get_perf_table_precise(CRYPTO)
+        st.dataframe(
+            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=180
+        )
+
+        st.subheader("📊 스타일 ETF")
+        style_perf = get_perf_table_precise(STYLE_ETFS)
+        st.dataframe(
+            style_perf_table(style_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=250
+        )
+
+        st.subheader("📊 섹터 ETF")
+        sector_perf = get_perf_table_precise(SECTOR_ETFS)
+        sector_height = int(43 * sector_perf.shape[0] + 42)
+        st.dataframe(
+            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=sector_height
+        )
+
+        # ---------- Normalized 차트 구간 설정 아래에 위치 ----------
+        st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
+        norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
+        fig1 = go.Figure()
+        for col in norm_idx.columns:
+            fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
+        fig1.update_layout(
+            xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
+            template="plotly_dark", height=400, legend=dict(orientation='h')
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+
+        st.subheader(f"📈 섹터 ETF 수익률 (최근 {normalized_months}개월)")
+        norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
+        fig2 = go.Figure()
+        for col in norm_sector.columns:
+            fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
+        fig2.update_layout(
+            xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
+            template="plotly_dark", height=400, legend=dict(orientation='h')
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+        st.subheader(f"📈 스타일 ETF 수익률 (최근 {normalized_months}개월)")
+        norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
+        fig3 = go.Figure()
+        for col in norm_style.columns:
+            fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
+        fig3.update_layout(
+            xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
+            template="plotly_dark", height=400, legend=dict(orientation='h')
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+        st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
+        headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD', 'ETH-USD']
+        news_df = get_news_headlines(headline_tickers, 3)
+        if not news_df.empty:
+            for _, row in news_df.iterrows():
+                st.markdown(f"- **[{row['티커']}]** {row['일자']}: {row['헤드라인']}")
+        else:
+            st.info("뉴스 헤드라인을 가져올 수 없습니다.")
+
+else:
+    st.warning("⚠️위에서 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!")
