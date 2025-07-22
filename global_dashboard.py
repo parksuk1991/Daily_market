@@ -25,7 +25,7 @@ st.set_page_config(
 col_title, col_img_credit = st.columns([7, 1])
 with col_title:
     st.title("🌐 글로벌 시장 대시보드")
-    st.markdown("####    전일 및 기간별 주요 시장 성과", unsafe_allow_html=True)
+    st.markdown("####    주요 시장 성과", unsafe_allow_html=True)
 with col_img_credit:
     # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 다운로드 실패시 대체 아이콘 제공
     image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg"
