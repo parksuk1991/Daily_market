@@ -21,11 +21,35 @@ st.set_page_config(
 # (좌측) 사이드바 완전 삭제됨
 
 st.title("🌐 글로벌 시황 대시보드")
-st.markdown("#### 전일 시장 데이터 및 기간별 성과")
 
-# 본문 상단에 이미지 및 Made by 문구
-st.image("https://img.icons8.com/color/2x/search.png", width=90)
-st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
+# -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
+col_title, col_img = st.columns([3, 2])
+with col_title:
+    st.markdown("#### 전일 시장 데이터 및 기간별 성과")
+with col_img:
+    # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 예시 이미지 URL
+    st.image(
+        "https://upload.wikimedia.org/wikipedia/commons/a/a1/Aldrin_Apollo_11.jpg",
+        width=110,
+        caption=None
+    )
+    st.markdown("<small style='color:#888'>Made by parksuk1991</small>", unsafe_allow_html=True)
+
+# ==================== 경고 메시지 출력 ====================
+st.warning("⚠️ 차트 구간(수익률 기간) 설정 후 '전일 시장 Update' 버튼을 눌러주세요!")
+
+# ============= 본문 중간(성과 차트 위)에 Normalized 기간 설정 UI & 버튼을 나란히 ==============
+st.markdown("---")
+st.markdown("##### 📈 차트 구간 설정 및 데이터 업데이트")
+col_slider, col_btn = st.columns([3,2])
+with col_slider:
+    normalized_months = st.slider(
+        "차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
+        3, 36, 12,
+        help="모든 차트에 적용될 정규화 수익률 기간입니다."
+    )
+with col_btn:
+    update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
 
 # =========== 자산 정의 ================
 STOCK_ETFS = {
@@ -86,8 +110,6 @@ STYLE_ETFS = {
     'Dividend (VIG)': 'VIG',
     'Low Volatility (USMV)': 'USMV'
 }
-
-# 정확한 기준일별 수익률 계산 함수(생략, 이전 답변 참고)
 
 def get_perf_table_precise(label2ticker, ref_date=None):
     tickers = list(label2ticker.values())
@@ -229,14 +251,8 @@ def colorize_return(val):
 def style_perf_table(df, perf_cols):
     return df.style.applymap(colorize_return, subset=perf_cols)
 
-# ============= 본문 중간(성과 차트 위)에 Normalized 기간 설정 UI 삽입 ==============
-# Normalized 기간은 한 곳에서 통합 설정, (기본값 12개월)
-st.markdown("---")
-st.markdown("##### 📈 차트 구간 설정")
-normalized_months = st.slider("차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)", 3, 36, 12, help="모든 차트에 적용될 정규화 수익률 기간입니다.")
-
 # =========== MAIN BUTTON ===========
-if st.button("전일 시장 Update", type="primary"):
+if update_clicked:
     with st.spinner("데이터 불러오는 중..."):
         st.subheader("📊 주식시장")
         stock_perf = get_perf_table_precise(STOCK_ETFS)
@@ -326,4 +342,4 @@ if st.button("전일 시장 Update", type="primary"):
             st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
 else:
-    st.info("아래 '전일 시장 Update' 버튼을 눌러주세요.")
+    st.info("아래에서 차트 구간을 설정한 후 '전일 시장 Update' 버튼을 눌러주세요.")
