@@ -22,7 +22,7 @@ st.set_page_config(
 )
 
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
-col_title, col_img_credit = st.columns([9, 1])
+col_title, col_img_credit = st.columns([8, 1])
 with col_title:
     st.title("🌐 글로벌 시장 대시보드")
     st.markdown("#### 전일 및 기간별 주요 시장 성과", unsafe_allow_html=True)
