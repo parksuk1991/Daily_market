@@ -21,7 +21,7 @@ st.set_page_config(
 # (좌측) 사이드바 완전 삭제됨
 
 st.title("🌐 글로벌 시황 대시보드")
-st.markdown("#### 전일 시장 데이터 및 다양한 기간별 성과 확인")
+st.markdown("#### 전일 시장 데이터 및 기간별 성과")
 
 # 본문 상단에 이미지 및 Made by 문구
 st.image("https://img.icons8.com/color/2x/search.png", width=90)
@@ -233,12 +233,12 @@ def style_perf_table(df, perf_cols):
 # Normalized 기간은 한 곳에서 통합 설정, (기본값 12개월)
 st.markdown("---")
 st.markdown("##### 📈 차트 구간 설정")
-normalized_months = st.slider("Normalized 수익률 기간 (개월, 모든 차트에 동일 적용)", 3, 36, 12, help="모든 차트에 적용될 Normalized 수익률 기간입니다.")
+normalized_months = st.slider("차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)", 3, 36, 12, help="모든 차트에 적용될 정규화 수익률 기간입니다.")
 
 # =========== MAIN BUTTON ===========
 if st.button("전일 시장 Update", type="primary"):
     with st.spinner("데이터 불러오는 중..."):
-        st.subheader("📊 주식시장 성과")
+        st.subheader("📊 주식시장")
         stock_perf = get_perf_table_precise(STOCK_ETFS)
         perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
         st.dataframe(
@@ -246,35 +246,35 @@ if st.button("전일 시장 Update", type="primary"):
             use_container_width=True, height=470
         )
 
-        st.subheader("📊 채권시장 성과")
+        st.subheader("📊 채권시장")
         bond_perf = get_perf_table_precise(BOND_ETFS)
         st.dataframe(
             style_perf_table(bond_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=420
         )
 
-        st.subheader("📊 통화시장 성과")
+        st.subheader("📊 통화")
         curr_perf = get_perf_table_precise(CURRENCY)
         st.dataframe(
             style_perf_table(curr_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=200
         )
 
-        st.subheader("📊 암호화폐 성과")
+        st.subheader("📊 암호화폐")
         crypto_perf = get_perf_table_precise(CRYPTO)
         st.dataframe(
             style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=180
         )
 
-        st.subheader("📊 스타일 ETF 성과")
+        st.subheader("📊 스타일 ETF")
         style_perf = get_perf_table_precise(STYLE_ETFS)
         st.dataframe(
             style_perf_table(style_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=250
         )
 
-        st.subheader("📊 섹터 ETF 성과")
+        st.subheader("📊 섹터 ETF")
         sector_perf = get_perf_table_precise(SECTOR_ETFS)
         sector_height = int(43 * sector_perf.shape[0] + 42)
         st.dataframe(
