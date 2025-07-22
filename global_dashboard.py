@@ -25,9 +25,12 @@ st.set_page_config(
 col_title, col_img_credit = st.columns([7, 1])
 with col_title:
     st.title("🌐 글로벌 주요 시장 모니터링")
+    #st.markdown("---", unsafe_allow_html=True)
+    #st.markdown("####    주요 시장 성과", unsafe_allow_html=True)
 with col_img_credit:
+    # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 다운로드 실패시 대체 아이콘 제공
     image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg"
-    fallback_icon = "https://cdn-icons-png.flaticon.com/512/3211/3211357.png"
+    fallback_icon = "https://cdn-icons-png.flaticon.com/512/3211/3211357.png"  # 우주인 아이콘 (flaticon)
     img_displayed = False
     try:
         response = requests.get(image_url, timeout=5)
@@ -60,6 +63,7 @@ with col_img_credit:
 # ===================== 차트 구간 설정 및 전일 시장 업데이트 버튼 (사이드바로 이동) =====================
 with st.sidebar:
     st.markdown("### ⚙️ 대시보드 설정")
+    # 슬라이더 타이틀: 메인, 괄호/보조설명은 하단 줄바꿈+축소
     st.markdown("""
         <div style="font-size:1rem;font-weight:600;">
             차트 수익률 기간 설정
@@ -69,7 +73,7 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     normalized_months = st.slider(
-        "",
+        "",  # 제목은 위에서 렌더링
         3, 36, 12,
         help="모든 차트에 적용될 정규화 수익률 기간입니다.",
         key="norm_months_slider"
@@ -145,24 +149,24 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
-# -------------------- 1. 자산별 성과 계산 검증/개선 --------------------
 def get_perf_table_precise(label2ticker, ref_date=None):
-    """
-    각 자산별 성과를 정확하게 계산 (close price 기준, 1D는 전 거래일 대비, 나머지는 해당 기간 첫 거래일 대비)
-    """
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
 
     if ref_date is None:
         ref_date = datetime.now().date()
-    start = ref_date - timedelta(days=3*366+20)
-    end = ref_date + timedelta(days=1)
+    start = ref_date - timedelta(days=3*365+14)
+    end = ref_date + timedelta(days=1)  # inclusive
+
     df = yf.download(tickers, start=start, end=end, progress=False)['Close']
     if isinstance(df, pd.Series):
         df = df.to_frame()
-    df = df.ffill()[tickers]
-    last_trade_idx = df.index[df.index.date <= ref_date][-1]
-    last_trade_date = last_trade_idx.date()
+    df = df.ffill()
+    df = df[tickers]
+    last_trade_date = df.index[-1].date()
+    if last_trade_date > ref_date:
+        last_trade_date = df.index[df.index.date <= ref_date][-1].date()
+    last_idx = df.index[df.index.date == last_trade_date][0]
 
     periods = {
         '1D': 1,
@@ -175,16 +179,17 @@ def get_perf_table_precise(label2ticker, ref_date=None):
         '1Y': 252,
         '3Y': 756
     }
+
     results = []
-    for label, ticker in label2ticker.items():
+    for i, (label, ticker) in enumerate(label2ticker.items()):
         row = {'자산명': label}
         series = df[ticker].dropna()
-        if last_trade_idx not in series.index:
+        if last_idx not in series.index:
             row['현재값'] = np.nan
             for k in periods: row[k] = np.nan
             results.append(row)
             continue
-        curr_val = series.loc[last_trade_idx]
+        curr_val = series.loc[last_idx]
         row['현재값'] = curr_val
         for k, val in periods.items():
             base = None
@@ -199,13 +204,13 @@ def get_perf_table_precise(label2ticker, ref_date=None):
                     y_idx = series.index[(series.index.year == this_year)][0]
                     base = series.loc[y_idx]
                 elif k == '1D':
-                    idx = series.index.get_loc(last_trade_idx)
+                    idx = series.index.get_loc(last_idx)
                     if idx >= 1:
                         base = series.iloc[idx-1]
                     else:
                         base = np.nan
                 else:
-                    idx = series.index.get_loc(last_trade_idx)
+                    idx = series.index.get_loc(last_idx)
                     if idx >= val:
                         base = series.iloc[idx-val]
                     else:
@@ -217,6 +222,7 @@ def get_perf_table_precise(label2ticker, ref_date=None):
             except Exception:
                 row[k] = np.nan
         results.append(row)
+
     df_r = pd.DataFrame(results)
     for col in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
         df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
@@ -236,144 +242,37 @@ def get_normalized_prices(label2ticker, months=6):
     norm_df.columns = [k for k in label2ticker]
     return norm_df
 
-# -------------------- 2. 섹터 ETF별 최대 비중 종목 뉴스 --------------------
-def get_etf_top_holding_stock(etf_ticker):
-    """
-    yfinance의 fund_holdings에서 비중 1위 종목 반환. 미지원시 info['topHoldings']/['holdings'] fallback.
-    """
-    try:
-        etf = yf.Ticker(etf_ticker)
-        try:
-            h = etf.fund_holdings
-            if h is not None and not h.empty:
-                return h.sort_values('weight', ascending=False)['symbol'].iloc[0]
-        except Exception:
-            pass
-        h2 = etf.info.get('topHoldings', None)
-        if h2 and len(h2) > 0:
-            weights = [x['holdingPercent'] for x in h2]
-            max_idx = np.argmax(weights)
-            return h2[max_idx]['symbol']
-        h3 = etf.info.get('holdings', None)
-        if h3 and len(h3) > 0:
-            weights = [x['holdingPercent'] for x in h3]
-            max_idx = np.argmax(weights)
-            return h3[max_idx]['symbol']
-    except Exception:
-        pass
-    return None
-
-def get_news_headline_for_ticker(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        news = stock.news if hasattr(stock, "news") else stock.get_news()
-        for article in news:
-            content = article.get('content', {})
-            title = article.get('title') or content.get('title')
-            pubdate = article.get('providerPublishTime') or content.get('pubDate')
-            if pubdate:
-                if isinstance(pubdate, int):
-                    date = datetime.fromtimestamp(pubdate)
-                else:
-                    try:
-                        date = pd.to_datetime(pubdate)
-                    except Exception:
-                        date = None
-            else:
-                date = None
-            return {
-                '티커': ticker,
-                '일자': date.strftime('%Y-%m-%d') if date else '',
-                '헤드라인': title
-            }
-    except Exception:
-        return None
-    return None
-
-def get_sector_top_holdings_news(sector_etfs):
-    """
-    섹터ETF별 최상위 비중종목별 뉴스 한개씩(중복 허용X)
-    """
-    stocks = []
-    for etf_ticker in sector_etfs.values():
-        stock = get_etf_top_holding_stock(etf_ticker)
-        if stock: stocks.append(stock)
-    stocks = list(dict.fromkeys(stocks))  # 중복 제거 (순서 유지)
+def get_news_headlines(tickers, limit=3):
     news_list = []
-    for tk in stocks:
-        news = get_news_headline_for_ticker(tk)
-        if news and news['헤드라인']:
-            news_list.append(news)
-    return news_list
-
-# -------------------- 3. SPY 전체보유종목 전일 Top10/Bottom10 --------------------
-def get_spy_holdings():
-    """
-    SPY의 전체 보유종목(symbol, name, sector) DataFrame 반환. 실패시 S&P 500 위키 fallback.
-    """
-    try:
-        etf = yf.Ticker("SPY")
-        h = etf.fund_holdings
-        if h is not None and not h.empty:
-            h = h.rename(columns={"symbol":"Ticker", "holdingName":"Company", "sector":"Sector"})
-            if "Company" not in h.columns:
-                h["Company"] = h["Ticker"]
-            if "Sector" not in h.columns:
-                h["Sector"] = ""
-            return h[["Ticker", "Company", "Sector"]]
-    except Exception:
-        pass
-    # fallback: 위키피디아 S&P 500
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    df = pd.read_html(url, header=0)[0]
-    df = df.rename(columns={"Symbol": "Ticker", "Security": "Company", "GICS Sector": "Sector"})
-    df['Ticker'] = df['Ticker'].str.replace('.', '-', regex=False)
-    return df[['Ticker', 'Company', 'Sector']]
-
-def get_spy_daily_perf():
-    """
-    SPY 보유종목별 전일 수익률, 거래량, 시가총액(백만) 포함 DataFrame 반환
-    """
-    spy_df = get_spy_holdings()
-    tickers = spy_df['Ticker'].tolist()
-    dfs = []
-    # yfinance 요청 제한 우회 위해 90개씩 분할
-    for i in range(0, len(tickers), 90):
-        tks = tickers[i:i+90]
-        data = yf.download(tks, period="7d", interval="1d", group_by='ticker', threads=True, progress=False)
-        for tk in tks:
-            try:
-                close = data[tk]['Close'].dropna()
-                vol = data[tk]['Volume'].dropna()
-                if len(close) < 2:
-                    continue
-                ret = (close.iloc[-1] / close.iloc[-2] - 1) * 100
-                last_vol = vol.iloc[-1]
-                info = yf.Ticker(tk).info
-                mktcap = info.get('marketCap', np.nan)
-                mktcap = mktcap/1e6 if pd.notnull(mktcap) else np.nan
-                dfs.append({
-                    'Ticker': tk,
-                    '전일수익률': ret,
-                    '거래량': int(last_vol),
-                    '시가총액': mktcap,
+    for ticker_symbol in tickers:
+        ticker = yf.Ticker(ticker_symbol)
+        try:
+            news = ticker.news if hasattr(ticker, "news") else ticker.get_news()
+            for article in news[:limit]:
+                content = article.get('content', {})
+                title = article.get('title') or content.get('title')
+                pubdate = article.get('providerPublishTime') or content.get('pubDate')
+                if pubdate:
+                    if isinstance(pubdate, int):
+                        date = datetime.fromtimestamp(pubdate)
+                    else:
+                        try:
+                            date = pd.to_datetime(pubdate)
+                        except Exception:
+                            date = None
+                else:
+                    date = None
+                news_list.append({
+                    '티커': ticker_symbol,
+                    '일자': date.strftime('%Y-%m-%d') if date else '',
+                    '헤드라인': title
                 })
-            except Exception:
-                continue
-    perf_df = pd.DataFrame(dfs)
-    perf_df = perf_df.merge(spy_df, on='Ticker', how='left')
-    return perf_df
-
-def get_spy_top_bottom10():
-    df = get_spy_daily_perf()
-    df = df[df['전일수익률'].notnull()]
-    top10 = df.nlargest(10, '전일수익률')
-    bottom10 = df.nsmallest(10, '전일수익률')
-    for d in [top10, bottom10]:
-        d['거래량'] = d['거래량'].apply(lambda x: f"{x:,}")
-        d['시가총액'] = d['시가총액'].apply(lambda x: f"{x:,.0f}")
-        d['전일수익률'] = d['전일수익률'].apply(lambda x: f"{x:.2f}%")
-    return top10, bottom10
+        except Exception:
+            continue
+    df = pd.DataFrame(news_list)
+    if not df.empty:
+        df = df.sort_values('일자', ascending=False)
+    return df
 
 def colorize_return(val):
     try:
@@ -392,6 +291,7 @@ def style_perf_table(df, perf_cols):
 
 # =========== MAIN BUTTON ===========
 if update_clicked:
+    # 빈 줄(공백) 추가해서 '주식시장' 부분을 조금 더 내려줌
     st.markdown("<br>", unsafe_allow_html=True)
     st.subheader("📊 주식시장")
     stock_perf = get_perf_table_precise(STOCK_ETFS)
@@ -437,6 +337,7 @@ if update_clicked:
         use_container_width=True, height=sector_height
     )
 
+    # ---------- Normalized 차트 구간 설정 아래에 위치 ----------
     st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
     norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
     fig1 = go.Figure()
@@ -470,23 +371,13 @@ if update_clicked:
     )
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.subheader("📰 섹터 ETF별 최대 비중 종목의 최근 뉴스 헤드라인")
-    news_list = get_sector_top_holdings_news(SECTOR_ETFS)
-    if news_list:
-        for row in news_list:
+    st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
+    headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD', 'ETH-USD']
+    news_df = get_news_headlines(headline_tickers, 3)
+    if not news_df.empty:
+        for _, row in news_df.iterrows():
             st.markdown(f"- **[{row['티커']}]** {row['일자']}: {row['헤드라인']}")
     else:
         st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
-    st.subheader("🏅 SPY 보유종목 전일 성과 Top 10 / Bottom 10")
-    try:
-        top10, bottom10 = get_spy_top_bottom10()
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Top 10")
-            st.dataframe(top10[['Ticker', 'Company', 'Sector', '전일수익률', '거래량', '시가총액']], use_container_width=True)
-        with col2:
-            st.markdown("#### Bottom 10")
-            st.dataframe(bottom10[['Ticker', 'Company', 'Sector', '전일수익률', '거래량', '시가총액']], use_container_width=True)
-    except Exception as e:
-        st.warning(f"SPY Top/Bottom 10 데이터를 불러오는 데 실패했습니다. ({e})")
+# else 블록 삭제: 안내문구는 사이드바에서 항상 노출
