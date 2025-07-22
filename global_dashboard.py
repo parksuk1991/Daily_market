@@ -21,13 +21,12 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🌐 글로벌 시장 대시보드")
-
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
-col_title, col_img = st.columns([9, 1])
+col_title, col_img_credit = st.columns([9, 1])
 with col_title:
-    st.markdown("#### 전일 및 기간별 주요 시장 성과")
-with col_img:
+    st.title("🌐 글로벌 시장 대시보드")
+    st.markdown("#### 전일 및 기간별 주요 시장 성과", unsafe_allow_html=True)
+with col_img_credit:
     # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 다운로드 실패시 대체 아이콘 제공
     image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg"
     fallback_icon = "https://cdn-icons-png.flaticon.com/512/3211/3211357.png"  # 우주인 아이콘 (flaticon)
@@ -36,37 +35,51 @@ with col_img:
         response = requests.get(image_url, timeout=5)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        st.image(img, width=180, caption=None)  # 이미지 크기 키움
+        st.image(img, width=110, caption=None)
         img_displayed = True
     except Exception:
         try:
             response = requests.get(fallback_icon, timeout=5)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
-            st.image(img, width=140, caption=None)  # 대체 아이콘도 크기 키움
+            st.image(img, width=90, caption=None)
             img_displayed = True
         except Exception:
             st.info("이미지를 불러올 수 없습니다.")
     st.markdown(
-        "<div style='font-size:1.3rem; color:#888; font-weight:600;'>Made by parksuk1991</div>",
+        "<div style='margin-top: -10px; text-align:center;'>"
+        "<span style='font-size:0.8rem; color:#888;'>Made by parksuk1991</span>"
+        "</div>",
         unsafe_allow_html=True
-    )  # 크기, 두께 키운 크레딧
+    )
 
 # ===================== 차트 구간 설정 및 전일 시장 업데이트 버튼 (사이드바로 이동) =====================
 with st.sidebar:
     st.markdown("### ⚙️ 대시보드 설정")
-    # 슬라이더와 버튼, 안내문구를 사이드바에 배치
+    # 슬라이더 타이틀: 메인, 괄호/보조설명은 하단 줄바꿈+축소
+    st.markdown("""
+        <div style="font-size:1rem;font-weight:600;">
+            차트 수익률 기간 설정
+        </div>
+        <div style="font-size:0.8rem; color:#888; line-height:1.2; margin-bottom:-10px;">
+            (N개월, 모든 차트에 동일 적용)
+        </div>
+    """, unsafe_allow_html=True)
     normalized_months = st.slider(
-        "차트 수익률 기간 설정 (N개월, 모든 차트에 동일 적용)",
+        "",  # 제목은 위에서 렌더링
         3, 36, 12,
         help="모든 차트에 적용될 정규화 수익률 기간입니다.",
         key="norm_months_slider"
     )
     update_clicked = st.button("전일 시장 Update", type="primary", use_container_width=True)
     st.markdown(
-        "<div style='margin-top: 20px; font-size:1.1rem; color:#d9534f; font-weight:600;'>"
-        "⚠️ 위에서 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!"
-        "</div>",
+        """
+        <div style='text-align:center; margin-top:20px;'>
+            <span style='font-size:0.85rem; color:#d9534f; font-weight:500;'>
+                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'전일 시장 Update' 버튼을 눌러주세요!
+            </span>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
@@ -272,92 +285,93 @@ def style_perf_table(df, perf_cols):
 
 # =========== MAIN BUTTON ===========
 if update_clicked:
-    with st.spinner("데이터 불러오는 중..."):
-        st.subheader("📊 주식시장")
-        stock_perf = get_perf_table_precise(STOCK_ETFS)
-        perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
-        st.dataframe(
-            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=470
-        )
+    # 빈 줄(공백) 추가해서 '주식시장' 부분을 조금 더 내려줌
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("📊 주식시장")
+    stock_perf = get_perf_table_precise(STOCK_ETFS)
+    perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+    st.dataframe(
+        style_perf_table(stock_perf.set_index('자산명'), perf_cols),
+        use_container_width=True, height=470
+    )
 
-        st.subheader("📊 채권시장")
-        bond_perf = get_perf_table_precise(BOND_ETFS)
-        st.dataframe(
-            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=420
-        )
+    st.subheader("📊 채권시장")
+    bond_perf = get_perf_table_precise(BOND_ETFS)
+    st.dataframe(
+        style_perf_table(bond_perf.set_index('자산명'), perf_cols),
+        use_container_width=True, height=420
+    )
 
-        st.subheader("📊 통화")
-        curr_perf = get_perf_table_precise(CURRENCY)
-        st.dataframe(
-            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=200
-        )
+    st.subheader("📊 통화")
+    curr_perf = get_perf_table_precise(CURRENCY)
+    st.dataframe(
+        style_perf_table(curr_perf.set_index('자산명'), perf_cols),
+        use_container_width=True, height=200
+    )
 
-        st.subheader("📊 암호화폐")
-        crypto_perf = get_perf_table_precise(CRYPTO)
-        st.dataframe(
-            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=180
-        )
+    st.subheader("📊 암호화폐")
+    crypto_perf = get_perf_table_precise(CRYPTO)
+    st.dataframe(
+        style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
+        use_container_width=True, height=180
+    )
 
-        st.subheader("📊 스타일 ETF")
-        style_perf = get_perf_table_precise(STYLE_ETFS)
-        st.dataframe(
-            style_perf_table(style_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=250
-        )
+    st.subheader("📊 스타일 ETF")
+    style_perf = get_perf_table_precise(STYLE_ETFS)
+    st.dataframe(
+        style_perf_table(style_perf.set_index('자산명'), perf_cols),
+        use_container_width=True, height=250
+    )
 
-        st.subheader("📊 섹터 ETF")
-        sector_perf = get_perf_table_precise(SECTOR_ETFS)
-        sector_height = int(43 * sector_perf.shape[0] + 42)
-        st.dataframe(
-            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=sector_height
-        )
+    st.subheader("📊 섹터 ETF")
+    sector_perf = get_perf_table_precise(SECTOR_ETFS)
+    sector_height = int(43 * sector_perf.shape[0] + 42)
+    st.dataframe(
+        style_perf_table(sector_perf.set_index('자산명'), perf_cols),
+        use_container_width=True, height=sector_height
+    )
 
-        # ---------- Normalized 차트 구간 설정 아래에 위치 ----------
-        st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
-        norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
-        fig1 = go.Figure()
-        for col in norm_idx.columns:
-            fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
-        fig1.update_layout(
-            xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=400, legend=dict(orientation='h')
-        )
-        st.plotly_chart(fig1, use_container_width=True)
+    # ---------- Normalized 차트 구간 설정 아래에 위치 ----------
+    st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
+    norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
+    fig1 = go.Figure()
+    for col in norm_idx.columns:
+        fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
+    fig1.update_layout(
+        xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
+        template="plotly_dark", height=400, legend=dict(orientation='h')
+    )
+    st.plotly_chart(fig1, use_container_width=True)
 
-        st.subheader(f"📈 섹터 ETF 수익률 (최근 {normalized_months}개월)")
-        norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
-        fig2 = go.Figure()
-        for col in norm_sector.columns:
-            fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
-        fig2.update_layout(
-            xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=400, legend=dict(orientation='h')
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+    st.subheader(f"📈 섹터 ETF 수익률 (최근 {normalized_months}개월)")
+    norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
+    fig2 = go.Figure()
+    for col in norm_sector.columns:
+        fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
+    fig2.update_layout(
+        xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
+        template="plotly_dark", height=400, legend=dict(orientation='h')
+    )
+    st.plotly_chart(fig2, use_container_width=True)
 
-        st.subheader(f"📈 스타일 ETF 수익률 (최근 {normalized_months}개월)")
-        norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
-        fig3 = go.Figure()
-        for col in norm_style.columns:
-            fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
-        fig3.update_layout(
-            xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=400, legend=dict(orientation='h')
-        )
-        st.plotly_chart(fig3, use_container_width=True)
+    st.subheader(f"📈 스타일 ETF 수익률 (최근 {normalized_months}개월)")
+    norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
+    fig3 = go.Figure()
+    for col in norm_style.columns:
+        fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
+    fig3.update_layout(
+        xaxis_title="날짜", yaxis_title="100 기준 누적수익률(%)",
+        template="plotly_dark", height=400, legend=dict(orientation='h')
+    )
+    st.plotly_chart(fig3, use_container_width=True)
 
-        st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
-        headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD', 'ETH-USD']
-        news_df = get_news_headlines(headline_tickers, 3)
-        if not news_df.empty:
-            for _, row in news_df.iterrows():
-                st.markdown(f"- **[{row['티커']}]** {row['일자']}: {row['헤드라인']}")
-        else:
-            st.info("뉴스 헤드라인을 가져올 수 없습니다.")
+    st.subheader("📰 최근 뉴스 헤드라인 (대표 티커 위주)")
+    headline_tickers = list(STOCK_ETFS.values())[:2] + list(SECTOR_ETFS.values())[:2] + ['BTC-USD', 'ETH-USD']
+    news_df = get_news_headlines(headline_tickers, 3)
+    if not news_df.empty:
+        for _, row in news_df.iterrows():
+            st.markdown(f"- **[{row['티커']}]** {row['일자']}: {row['헤드라인']}")
+    else:
+        st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
 # else 블록 삭제: 안내문구는 사이드바에서 항상 노출
