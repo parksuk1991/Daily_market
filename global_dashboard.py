@@ -339,4 +339,4 @@ if update_clicked:
             st.info("뉴스 헤드라인을 가져올 수 없습니다.")
 
 else:
-    st.warning("⚠️위에서 차트 구간(수익률 기간) 설정 후 '전일 시장 Update' 버튼을 눌러주세요!")
+    st.warning("⚠️위에서 차트 수익률 기간 설정 후 '전일 시장 Update' 버튼을 눌러주세요!")
