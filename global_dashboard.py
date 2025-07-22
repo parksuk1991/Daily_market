@@ -51,6 +51,7 @@ with col_img_credit:
         "<span style='font-size:0.9rem; color:#888;'>Made by parksuk1991</span>"
         "</div>",
         unsafe_allow_html=True
+    )
     st.markdown(
         '<div style="text-align: right; margin-bottom: 10px;">'
         'Data 출처: <a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a>'
