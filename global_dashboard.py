@@ -243,20 +243,21 @@ def get_normalized_prices(label2ticker, months=6):
     norm_df.columns = [k for k in label2ticker]
     return norm_df
 
-def get_top_holding(etf_ticker):
+def get_top_holdings(etf_ticker, n=3):
+    """ETF 내 비중 상위 n개 종목의 심볼과 이름을 반환"""
     try:
         t = Ticker(etf_ticker)
         info = t.fund_holding_info or {}
         holdings = info.get(etf_ticker, {}).get('holdings', [])
         if holdings:
-            top = max(holdings, key=lambda x: x.get('holdingPercent', 0))
-            return top['symbol']
+            holdings_sorted = sorted(holdings, key=lambda x: x.get('holdingPercent', 0), reverse=True)
+            # symbol, holdingName 둘 다 반환
+            return [(h['symbol'], h.get('holdingName', h['symbol'])) for h in holdings_sorted[:n]]
         else:
-            return None
+            return []
     except Exception:
-        return None
+        return []
 
-# ======= [추가] 종목별 뉴스 추출 함수 =======
 def get_news_for_ticker(ticker_symbol, limit=1):
     y = yf.Ticker(ticker_symbol)
     try:
@@ -370,17 +371,22 @@ if update_clicked:
     )
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.subheader("📰 주요 종목 헤드라인")
+    st.subheader("📰 섹터별 주요 종목 헤드라인")
     for label, etf in SECTOR_ETFS.items():
-        top = get_top_holding(etf)
-        if top:
-            st.write(f"#### {label} → 최다 비중 종목: **{top}**")
-            news = get_news_for_ticker(top, limit=1)
-            if news:
-                art = news[0]
-                st.markdown(f"- **[{art['ticker']}]** {art['date']}: {art['title']}")
-            else:
-                st.write("- 뉴스 없음")
+        top_holdings = get_top_holdings(etf, n=3)
+        if top_holdings:
+            # 섹터명에서 괄호와 ETF코드 제거 → "IT (XLK)" → "IT섹터" 등 가공
+            sector_name = label.split()[0] + "섹터"
+            holding_names = [name for _, name in top_holdings]
+            holding_syms = [sym for sym, _ in top_holdings]
+            st.write(f"#### {sector_name} 주요 종목: {', '.join(holding_names)}")
+            for sym, name in top_holdings:
+                news = get_news_for_ticker(sym, limit=1)
+                if news:
+                    art = news[0]
+                    st.markdown(f"- **[{sym}]** {art['date']}: {art['title']}")
+                else:
+                    st.write(f"- [{sym}] 뉴스 없음")
         else:
             st.write(f"- {label}: 보유종목 정보 없음")
 
