@@ -806,11 +806,9 @@ def show_all_performance_tables():
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
     if not sector_perf.empty:
-        # 동적 높이 계산 (기존 방식 유지)
-        sector_height = int(43 * sector_perf.shape[0] + 42)
         st.dataframe(
             style_perf_table(sector_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=sector_height
+            use_container_width=True, height=420
         )
     else:
         st.error("섹터 ETF 성과 데이터를 계산할 수 없습니다.")
