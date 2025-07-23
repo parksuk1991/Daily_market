@@ -817,19 +817,23 @@ def show_all_performance_tables():
         # 상세 정보 표시 토글
         with st.expander("📋 상세 계산 정보 보기"):            
             # 실제 계산 날짜 (샘플)
-            st.write("**실제 계산 기준일 (샘플):**")
+            #st.write("**실제 계산 기준일 (샘플):**")
             sample_label, last_date, actual_dates = get_sample_calculation_dates(STOCK_ETFS)
             
             if sample_label and actual_dates:
-                st.write(f"• 샘플 자산: {sample_label}")
-                st.write(f"• 최근 거래일: {last_date}")
-                
-                # 실제 기준일 표시
-                for period in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
-                    if period in actual_dates:
-                        st.write(f"• {period}: {actual_dates[period]}")
+                st.caption(f"**샘플 자산:** {sample_label} | **최근 거래일:** {last_date}")
+
+
+                # 첫 번째 줄: 단기 기간
+                periods_line1 = [f"{period}: {actual_dates[period]}" for period in ['1D', '1W', 'MTD'] if period in actual_dates]
+                st.caption("• " + " | ".join(periods_line1))
+
+                # 두 번째 줄: 중장기 기간  
+                periods_line2 = [f"{period}: {actual_dates[period]}" for period in ['1M', '3M', '6M', 'YTD', '1Y', '3Y'] if period in actual_dates]
+                st.caption("• " + " | ".join(periods_line2))
+
             else:
-                st.warning("샘플 데이터를 불러올 수 없습니다.")
+                st.caption("샘플 데이터를 불러올 수 없습니다.")
 
 
 
