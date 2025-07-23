@@ -549,7 +549,7 @@ def create_sentiment_histogram(df):
         y=smoothed * len(df) * (bin_edges[1] - bin_edges[0]),
         mode='lines',
         name='KDE',
-        line=dict(color='crimson', width=2)
+        line=dict(color='royalblue', width=2)
     ))
     
     fig.update_layout(
@@ -612,9 +612,9 @@ def create_sentiment_countplot(df):
     
     # 색상 매핑
     color_map = {
-        'Positive': 'rgb(102,194,165)',
-        'Negative': 'rgb(252,141,98)',
-        'Neutral': 'rgb(141,160,203)'
+        'Positive': 'rgb(235,0,140)',
+        'Negative': 'rgb(65,105,225)',
+        'Neutral': 'rgb(102,194,165)'
     }
     
     colors = [color_map.get(cat, 'blue') for cat in sentiment_counts['Sentiment_Category']]
