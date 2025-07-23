@@ -540,7 +540,7 @@ def create_sentiment_histogram(df):
     hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     
-    # 간단한 smoothing을 위한 moving average
+    # 간단한 smoothing 위한 moving average
     from scipy import ndimage
     smoothed = ndimage.gaussian_filter1d(hist, 1)
     
@@ -643,7 +643,7 @@ def create_sentiment_countplot(df):
 
 # Streamlit 앱 메인 부분
 def show_sentiment_analysis():
-    st.subheader("📰 뉴스 감정 분석")
+    st.subheader("✳️✴️ 뉴스 감정 분석")
     
     # 데이터 로딩
     with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
@@ -656,7 +656,7 @@ def show_sentiment_analysis():
     # 기본 통계 정보
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("총 뉴스 수", len(df))
+        st.metric("총 뉴스 개수", len(df))
     with col2:
         st.metric("평균 감정 점수", f"{df['Sentiment'].mean():.3f}")
     with col3:
@@ -803,7 +803,7 @@ if update_clicked:
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
 
-    st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
+    st.subheader(f"✅ 주요 주가지수 수익률 (최근 {normalized_months}개월)")
     norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
     fig1 = go.Figure()
     for col in norm_idx.columns:
@@ -814,7 +814,7 @@ if update_clicked:
     )
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.subheader(f"📈 섹터 ETF 수익률 (최근 {normalized_months}개월)")
+    st.subheader(f"☑️ 섹터 ETF 수익률 (최근 {normalized_months}개월)")
     norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
     fig2 = go.Figure()
     for col in norm_sector.columns:
@@ -825,7 +825,7 @@ if update_clicked:
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader(f"📈 스타일 ETF 수익률 (최근 {normalized_months}개월)")
+    st.subheader(f"☑️ 스타일 ETF 수익률 (최근 {normalized_months}개월)")
     norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
     fig3 = go.Figure()
     for col in norm_style.columns:
