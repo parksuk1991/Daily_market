@@ -763,7 +763,7 @@ def show_all_performance_tables():
     if not bond_perf.empty:
         st.dataframe(
             style_perf_table(bond_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=400
+            use_container_width=True, height=385
         )
     else:
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
@@ -776,7 +776,7 @@ def show_all_performance_tables():
     if not curr_perf.empty:
         st.dataframe(
             style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=320
+            use_container_width=True, height=315
         )
     else:
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
@@ -789,7 +789,7 @@ def show_all_performance_tables():
     if not crypto_perf.empty:
         st.dataframe(
             style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=390
+            use_container_width=True, height=385
         )
     else:
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
