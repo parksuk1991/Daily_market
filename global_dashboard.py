@@ -612,9 +612,9 @@ def create_sentiment_countplot(df):
     
     # 색상 매핑
     color_map = {
-        'Positive': 'rgb(235,0,140)',
-        'Negative': 'rgb(65,105,225)',
-        'Neutral': 'rgb(102,194,165)'
+        'Positive': 'rgba(235,0,140,0.8)',
+        'Negative': 'rgba(65,105,225,0.8)',
+        'Neutral': 'rgba(102,194,165,0.8)'
     }
     
     colors = [color_map.get(cat, 'blue') for cat in sentiment_counts['Sentiment_Category']]
