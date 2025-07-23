@@ -77,7 +77,7 @@ with st.sidebar:
         """
         <div style='text-align:center; margin-top:20px;'>
             <span style='font-size:0.85rem; color:#d9534f; font-weight:500;'>
-                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼을 눌러주세요!
+                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼 Click!
             </span>
         </div>
         """,
