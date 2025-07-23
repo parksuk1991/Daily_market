@@ -153,6 +153,219 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
+
+def get_perf_table_improved(label2ticker, ref_date=None):
+    """
+    개선된 자산 성과 계산 함수
+    
+    주요 개선사항:
+    1. 영업일만 고려한 정확한 기간 계산
+    2. MTD/YTD 로직 개선
+    3. 에러 처리 강화
+    4. 명확한 기간 정의
+    """
+    tickers = list(label2ticker.values())
+    labels = list(label2ticker.keys())
+    
+    if ref_date is None:
+        ref_date = datetime.now().date()
+    
+    # 충분한 데이터 확보를 위해 4년치 데이터 다운로드
+    start = ref_date - timedelta(days=4*365)
+    end = ref_date + timedelta(days=1)
+    
+    # 데이터 다운로드 및 전처리
+    try:
+        df = yf.download(tickers, start=start, end=end, progress=False)['Close']
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        df = df.ffill().dropna(how='all')  # 모든 값이 NaN인 행 제거
+        df = df[tickers]  # 티커 순서 유지
+    except Exception as e:
+        st.error(f"데이터 다운로드 오류: {e}")
+        return pd.DataFrame()
+    
+    if df.empty:
+        st.warning("다운로드된 데이터가 없습니다.")
+        return pd.DataFrame()
+    
+    # 기준일 또는 그 이전의 최근 거래일 찾기
+    available_dates = df.index[df.index.date <= ref_date]
+    if len(available_dates) == 0:
+        st.warning(f"기준일({ref_date}) 이전의 데이터가 없습니다.")
+        return pd.DataFrame()
+    
+    last_trade_date = available_dates[-1].date()
+    last_idx = available_dates[-1]
+    
+    # 기간별 정의 (영업일 기준)
+    periods = {
+        '1D': {'days': 1, 'type': 'business'},
+        '1W': {'days': 5, 'type': 'business'}, 
+        'MTD': {'type': 'month_start'},
+        '1M': {'days': 21, 'type': 'business'},  # 약 1개월 영업일
+        '3M': {'days': 63, 'type': 'business'},  # 약 3개월 영업일
+        '6M': {'days': 126, 'type': 'business'}, # 약 6개월 영업일
+        'YTD': {'type': 'year_start'},
+        '1Y': {'days': 252, 'type': 'business'}, # 1년 영업일
+        '3Y': {'days': 756, 'type': 'business'}  # 3년 영업일
+    }
+    
+    results = []
+    
+    for label, ticker in label2ticker.items():
+        row = {'자산명': label}
+        
+        # 해당 티커의 시계열 데이터
+        series = df[ticker].dropna()
+        
+        if last_idx not in series.index or len(series) == 0:
+            # 데이터가 없는 경우
+            row['현재값'] = np.nan
+            for period_key in periods.keys():
+                row[period_key] = np.nan
+            results.append(row)
+            continue
+        
+        # 현재값
+        curr_val = series.loc[last_idx]
+        row['현재값'] = curr_val
+        
+        # 각 기간별 성과 계산
+        for period_key, period_config in periods.items():
+            base_val = None
+            
+            try:
+                if period_config['type'] == 'month_start':
+                    # MTD: 해당 월의 첫 거래일
+                    month_start = last_trade_date.replace(day=1)
+                    month_data = series[series.index.date >= month_start]
+                    if len(month_data) > 0:
+                        base_val = month_data.iloc[0]
+                    
+                elif period_config['type'] == 'year_start':
+                    # YTD: 해당 연도의 첫 거래일
+                    year_start = last_trade_date.replace(month=1, day=1)
+                    year_data = series[series.index.date >= year_start]
+                    if len(year_data) > 0:
+                        base_val = year_data.iloc[0]
+                
+                elif period_config['type'] == 'business':
+                    # 영업일 기준 계산
+                    current_idx = series.index.get_loc(last_idx)
+                    lookback_days = period_config['days']
+                    
+                    if current_idx >= lookback_days:
+                        base_val = series.iloc[current_idx - lookback_days]
+                    elif current_idx > 0:
+                        # 데이터가 부족한 경우 가장 오래된 데이터 사용
+                        base_val = series.iloc[0]
+                        
+                # 수익률 계산
+                if base_val is not None and not np.isnan(base_val) and base_val != 0:
+                    return_pct = (curr_val / base_val - 1) * 100
+                    row[period_key] = return_pct
+                else:
+                    row[period_key] = np.nan
+                    
+            except Exception as e:
+                print(f"Error calculating {period_key} for {ticker}: {e}")
+                row[period_key] = np.nan
+        
+        results.append(row)
+    
+    # 결과 DataFrame 생성
+    df_result = pd.DataFrame(results)
+    
+    # 포맷팅
+    percentage_cols = ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']
+    for col in percentage_cols:
+        if col in df_result.columns:
+            df_result[col] = df_result[col].apply(
+                lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
+            )
+    
+    if '현재값' in df_result.columns:
+        df_result['현재값'] = df_result['현재값'].apply(
+            lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A"
+        )
+    
+    return df_result
+
+
+def get_detailed_performance_info(label2ticker, ref_date=None):
+    """
+    성과 계산의 상세 정보를 제공하는 함수 (디버깅용)
+    """
+    if ref_date is None:
+        ref_date = datetime.now().date()
+    
+    st.write("### 📊 성과 계산 상세 정보")
+    st.write(f"**기준일**: {ref_date}")
+    
+    # 샘플 티커로 상세 정보 표시
+    sample_ticker = list(label2ticker.values())[0]
+    sample_label = list(label2ticker.keys())[0]
+    
+    start = ref_date - timedelta(days=4*365)
+    end = ref_date + timedelta(days=1)
+    
+    try:
+        data = yf.download(sample_ticker, start=start, end=end, progress=False)['Close']
+        data = data.dropna()
+        
+        available_dates = data.index[data.index.date <= ref_date]
+        if len(available_dates) > 0:
+            last_trade_date = available_dates[-1].date()
+            st.write(f"**최근 거래일**: {last_trade_date}")
+            st.write(f"**총 거래일 수**: {len(data)}")
+            
+            # 기간별 실제 계산 날짜 표시
+            current_idx = data.index.get_loc(available_dates[-1])
+            
+            st.write("#### 기간별 기준일:")
+            periods_check = {
+                '1D': 1, '1W': 5, '1M': 21, '3M': 63, '6M': 126, '1Y': 252, '3Y': 756
+            }
+            
+            for period, days in periods_check.items():
+                if current_idx >= days:
+                    base_date = data.index[current_idx - days].date()
+                    st.write(f"- **{period}**: {base_date} ({days}영업일 전)")
+                else:
+                    st.write(f"- **{period}**: 데이터 부족 (필요: {days}일, 보유: {current_idx+1}일)")
+                    
+            # MTD, YTD 기준일
+            month_start = last_trade_date.replace(day=1)
+            year_start = last_trade_date.replace(month=1, day=1)
+            
+            mtd_data = data[data.index.date >= month_start]
+            ytd_data = data[data.index.date >= year_start]
+            
+            if len(mtd_data) > 0:
+                st.write(f"- **MTD**: {mtd_data.index[0].date()} (월초 첫 거래일)")
+            if len(ytd_data) > 0:
+                st.write(f"- **YTD**: {ytd_data.index[0].date()} (연초 첫 거래일)")
+                
+    except Exception as e:
+        st.error(f"상세 정보 로딩 오류: {e}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def get_perf_table_precise(label2ticker, ref_date=None):
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
@@ -510,6 +723,108 @@ def show_sentiment_analysis():
 
 
 
+def show_all_performance_tables():
+    """모든 자산 유형별 성과 테이블 표시"""
+    
+    # 상세 정보 토글 (전체 적용)
+    show_details = st.checkbox("성과 계산 상세 정보 보기")
+    if show_details:
+        get_detailed_performance_info(STOCK_ETFS)
+    
+    # 성과 컬럼 정의
+    perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+    
+    # 1. 주식시장
+    st.subheader("📊 주식시장")
+    with st.spinner("주식시장 성과 데이터 계산 중..."):
+        stock_perf = get_perf_table_improved(STOCK_ETFS)
+    
+    if not stock_perf.empty:
+        st.dataframe(
+            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=470
+        )
+    else:
+        st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
+    
+    # 2. 채권시장
+    st.subheader("📊 채권시장")
+    with st.spinner("채권시장 성과 데이터 계산 중..."):
+        bond_perf = get_perf_table_improved(BOND_ETFS)
+    
+    if not bond_perf.empty:
+        st.dataframe(
+            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=420
+        )
+    else:
+        st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
+    
+    # 3. 통화
+    st.subheader("📊 통화")
+    with st.spinner("통화 성과 데이터 계산 중..."):
+        curr_perf = get_perf_table_improved(CURRENCY)
+    
+    if not curr_perf.empty:
+        st.dataframe(
+            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=200
+        )
+    else:
+        st.error("통화 성과 데이터를 계산할 수 없습니다.")
+    
+    # 4. 암호화폐
+    st.subheader("📊 암호화폐")
+    with st.spinner("암호화폐 성과 데이터 계산 중..."):
+        crypto_perf = get_perf_table_improved(CRYPTO)
+    
+    if not crypto_perf.empty:
+        st.dataframe(
+            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=180
+        )
+    else:
+        st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
+    
+    # 5. 스타일 ETF
+    st.subheader("📊 스타일 ETF")
+    with st.spinner("스타일 ETF 성과 데이터 계산 중..."):
+        style_perf = get_perf_table_improved(STYLE_ETFS)
+    
+    if not style_perf.empty:
+        st.dataframe(
+            style_perf_table(style_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=250
+        )
+    else:
+        st.error("스타일 ETF 성과 데이터를 계산할 수 없습니다.")
+    
+    # 6. 섹터 ETF
+    st.subheader("📊 섹터 ETF")
+    with st.spinner("섹터 ETF 성과 데이터 계산 중..."):
+        sector_perf = get_perf_table_improved(SECTOR_ETFS)
+    
+    if not sector_perf.empty:
+        # 동적 높이 계산 (기존 방식 유지)
+        sector_height = int(43 * sector_perf.shape[0] + 42)
+        st.dataframe(
+            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
+            use_container_width=True, height=sector_height
+        )
+    else:
+        st.error("섹터 ETF 성과 데이터를 계산할 수 없습니다.")
+    
+    # 계산 방식 안내 (전체 하단에 표시)
+    st.markdown("---")
+    st.caption("📝 **성과 계산 기준**")
+    st.caption("• 영업일 기준: 1D=1일, 1W=5일, 1M=21일, 3M=63일, 6M=126일, 1Y=252일, 3Y=756일")
+    st.caption("• MTD: 해당 월 첫 거래일 기준, YTD: 해당 연도 첫 거래일 기준")
+    st.caption("• 데이터 부족 시 사용 가능한 가장 오래된 데이터 기준으로 계산")
+
+
+
+
+
 
 
 
@@ -517,49 +832,7 @@ def show_sentiment_analysis():
 if update_clicked:
     # 빈 줄(공백) 추가해서 '주식시장' 부분을 조금 더 내려줌
     st.markdown("<br>", unsafe_allow_html=True)
-    st.subheader("📊 주식시장")
-    stock_perf = get_perf_table_precise(STOCK_ETFS)
-    perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
-    st.dataframe(
-        style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-        use_container_width=True, height=470
-    )
-
-    st.subheader("📊 채권시장")
-    bond_perf = get_perf_table_precise(BOND_ETFS)
-    st.dataframe(
-        style_perf_table(bond_perf.set_index('자산명'), perf_cols),
-        use_container_width=True, height=420
-    )
-
-    st.subheader("📊 통화")
-    curr_perf = get_perf_table_precise(CURRENCY)
-    st.dataframe(
-        style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-        use_container_width=True, height=200
-    )
-
-    st.subheader("📊 암호화폐")
-    crypto_perf = get_perf_table_precise(CRYPTO)
-    st.dataframe(
-        style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-        use_container_width=True, height=180
-    )
-
-    st.subheader("📊 스타일 ETF")
-    style_perf = get_perf_table_precise(STYLE_ETFS)
-    st.dataframe(
-        style_perf_table(style_perf.set_index('자산명'), perf_cols),
-        use_container_width=True, height=250
-    )
-
-    st.subheader("📊 섹터 ETF")
-    sector_perf = get_perf_table_precise(SECTOR_ETFS)
-    sector_height = int(43 * sector_perf.shape[0] + 42)
-    st.dataframe(
-        style_perf_table(sector_perf.set_index('자산명'), perf_cols),
-        use_container_width=True, height=sector_height
-    )
+    show_all_performance_tables()
 
     # ---------- Normalized 차트 구간 설정 아래에 위치 ----------
     st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
