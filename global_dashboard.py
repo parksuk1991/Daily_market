@@ -532,7 +532,7 @@ def create_sentiment_histogram(df):
         x=df['Sentiment'],
         nbinsx=20,
         name='Sentiment Distribution',
-        marker_color='rgba(158, 71, 99, 0.7)',
+        marker_color='rgba(235, 0, 140, 0.7)',
         opacity=0.8
     ))
     
@@ -612,9 +612,9 @@ def create_sentiment_countplot(df):
     
     # 색상 매핑
     color_map = {
-        'Positive': 'green',
-        'Negative': 'red',
-        'Neutral': 'gray'
+        'Positive': 'rgb(102,194,165)',
+        'Negative': 'rgb(252,141,98)',
+        'Neutral': 'rgb(141,160,203)'
     }
     
     colors = [color_map.get(cat, 'blue') for cat in sentiment_counts['Sentiment_Category']]
