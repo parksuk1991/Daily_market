@@ -95,11 +95,6 @@ with st.sidebar:
     )
 
 
-    
-    show_details = st.checkbox("성과 계산 상세 정보 보기")
-    if show_details:
-        get_detailed_performance_info(STOCK_ETFS)
-
 # =========== 자산 정의 ================
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY',
