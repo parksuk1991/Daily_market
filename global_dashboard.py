@@ -99,7 +99,9 @@ with st.sidebar:
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY',
     'NASDAQ 100 (QQQ)': 'QQQ',
-    'MSCI ACWI (ACWI)': 'ACWI',
+    '전세계 (ACWI)': 'ACWI',
+    '선진국 (VEA)': 'VEA',
+    '신흥국 (VWO)': 'VWO',
     '유럽(Europe, VGK)': 'VGK',
     '중국(China, MCHI)': 'MCHI',
     '일본(Japan, EWJ)': 'EWJ',
@@ -109,6 +111,7 @@ STOCK_ETFS = {
     '브라질(Brazil, EWZ)': 'EWZ',
     '캐나다(Canada, EWC)': 'EWC'
 }
+
 BOND_ETFS = {
     '미국 장기국채(TLT)': 'TLT',
     '미국 단기국채(SHY)': 'SHY',
@@ -121,17 +124,33 @@ BOND_ETFS = {
     '미국 국채(BND)': 'BND',
     '단기국채(SPTS)': 'SPTS'
 }
+
 CURRENCY = {
-    'USD/KRW': 'KRW=X',
-    'USD/EUR': 'EURUSD=X',
-    'USD/JPY': 'JPY=X'
+    '달러-원': 'KRW=X',
+    '달러인덱스': 'DX-Y.NYB',
+    '달러-유로': 'EURUSD=X',
+    '유로-원': 'EURKRW=X',
+    '달러-엔': 'JPY=X',
+    '원-엔': 'JPYKRW=X',
+    '달러-파운드': 'GBPUSD=X',
+    '달러-위안': 'CNY=X'
 }
+
+
 CRYPTO = {
-    '비트코인(BTC-USD)': 'BTC-USD',
-    '이더리움(ETH-USD)': 'ETH-USD',
-    '솔라나(SOL-USD)': 'SOL-USD',
-    '리플(XRP-USD)': 'XRP-USD',
+    '비트코인 (BTC)': 'BTC-USD',
+    '이더리움 (ETH)': 'ETH-USD',
+    '솔라나 (SOL)': 'SOL-USD',
+    '리플 (XRP)': 'XRP-USD',
+    '에이다 (ADA)': 'ADA-USD',
+    '폴리곤 (MATIC)': 'MATIC-USD',
+    '라이트코인 (LTC)': 'LTC-USD',
+    '비트코인캐시 (BCH)': 'BCH-USD',
+    '체인링크 (LINK)': 'LINK-USD',
+    '도지코인 (DOGE)': 'DOGE-USD',
+    '아발란체 (AVAX)': 'AVAX-USD',
 }
+
 SECTOR_ETFS = {
     'IT (XLK)': 'XLK',
     '헬스케어 (XLV)': 'XLV',
@@ -732,7 +751,7 @@ def show_all_performance_tables():
     if not stock_perf.empty:
         st.dataframe(
             style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=470
+            use_container_width=True, height=480
         )
     else:
         st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
@@ -771,7 +790,7 @@ def show_all_performance_tables():
     if not crypto_perf.empty:
         st.dataframe(
             style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=180
+            use_container_width=True, height=300
         )
     else:
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
