@@ -125,7 +125,6 @@ CURRENCY = {
     '달러-위안': 'CNY=X'
 }
 
-
 CRYPTO = {
     '비트코인 (BTC)': 'BTC-USD',
     '이더리움 (ETH)': 'ETH-USD',
@@ -707,7 +706,7 @@ def show_all_performance_tables():
         st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
     
     # 2. 채권시장
-    st.subheader("📊 채권시장")
+    st.subheader("🗠 채권시장")
     with st.spinner("채권시장 성과 데이터 계산 중..."):
         bond_perf = get_perf_table_improved(BOND_ETFS)
     
@@ -720,7 +719,7 @@ def show_all_performance_tables():
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
     
     # 3. 통화
-    st.subheader("📊 통화")
+    st.subheader("📈 통화")
     with st.spinner("통화 성과 데이터 계산 중..."):
         curr_perf = get_perf_table_improved(CURRENCY)
     
@@ -733,7 +732,7 @@ def show_all_performance_tables():
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
     
     # 4. 암호화폐
-    st.subheader("📊 암호화폐")
+    st.subheader("💹 암호화폐")
     with st.spinner("암호화폐 성과 데이터 계산 중..."):
         crypto_perf = get_perf_table_improved(CRYPTO)
     
@@ -746,7 +745,7 @@ def show_all_performance_tables():
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
     
     # 5. 스타일 ETF
-    st.subheader("📊 스타일 ETF")
+    st.subheader("📕 스타일 ETF")
     with st.spinner("스타일 ETF 성과 데이터 계산 중..."):
         style_perf = get_perf_table_improved(STYLE_ETFS)
     
@@ -759,7 +758,7 @@ def show_all_performance_tables():
         st.error("스타일 ETF 성과 데이터를 계산할 수 없습니다.")
     
     # 6. 섹터 ETF
-    st.subheader("📊 섹터 ETF")
+    st.subheader("📘 섹터 ETF")
     with st.spinner("섹터 ETF 성과 데이터 계산 중..."):
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
