@@ -69,7 +69,7 @@ with st.sidebar:
     normalized_months = st.slider(
         "",  # 제목은 위에서 렌더링
         3, 36, 12,
-        help="모든 차트에 적용될 정규화 수익률 기간입니다.",
+        help="모든 차트에 적용될 정규화 수익률 기간을 의미",
         key="norm_months_slider"
     )
     update_clicked = st.button("Update", type="primary", use_container_width=True)
