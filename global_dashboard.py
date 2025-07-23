@@ -815,7 +815,7 @@ def show_all_performance_tables():
     
     with col2:
         # 상세 정보 표시 토글
-        with st.expander("📋 상세 계산 정보 보기"):            
+        with st.expander("📋 상세 계산 기준일 보기"):            
             # 실제 계산 날짜 (샘플)
             #st.write("**실제 계산 기준일 (샘플):**")
             sample_label, last_date, actual_dates = get_sample_calculation_dates(STOCK_ETFS)
