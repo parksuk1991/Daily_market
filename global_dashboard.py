@@ -854,5 +854,5 @@ if update_clicked:
                     st.write(f"- [{sym}] 뉴스 없음")
         else:
             st.write(f"- {label}: 보유종목 정보 없음")
-            
+    st.markdown("---")       
     show_sentiment_analysis()
