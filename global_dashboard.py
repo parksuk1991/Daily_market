@@ -126,12 +126,12 @@ BOND_ETFS = {
 }
 
 CURRENCY = {
-    '달러-원': 'KRW=X',
     '달러인덱스': 'DX-Y.NYB',
-    '달러-유로': 'EURUSD=X',
+    '달러-원': 'KRW=X',
     '유로-원': 'EURKRW=X',
     '달러-엔': 'JPY=X',
     '원-엔': 'JPYKRW=X',
+    '달러-유로': 'EURUSD=X',
     '달러-파운드': 'GBPUSD=X',
     '달러-위안': 'CNY=X'
 }
@@ -143,7 +143,6 @@ CRYPTO = {
     '솔라나 (SOL)': 'SOL-USD',
     '리플 (XRP)': 'XRP-USD',
     '에이다 (ADA)': 'ADA-USD',
-    '폴리곤 (MATIC)': 'MATIC-USD',
     '라이트코인 (LTC)': 'LTC-USD',
     '비트코인캐시 (BCH)': 'BCH-USD',
     '체인링크 (LINK)': 'LINK-USD',
@@ -751,7 +750,7 @@ def show_all_performance_tables():
     if not stock_perf.empty:
         st.dataframe(
             style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=480
+            use_container_width=True, height=490
         )
     else:
         st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
@@ -777,7 +776,7 @@ def show_all_performance_tables():
     if not curr_perf.empty:
         st.dataframe(
             style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=200
+            use_container_width=True, height=370
         )
     else:
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
@@ -790,7 +789,7 @@ def show_all_performance_tables():
     if not crypto_perf.empty:
         st.dataframe(
             style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=300
+            use_container_width=True, height=410
         )
     else:
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
