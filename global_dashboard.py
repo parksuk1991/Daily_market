@@ -20,7 +20,7 @@ except ImportError:
     st.error("lxml 패키지가 필요합니다. requirements.txt에 lxml을 추가하세요.")
 
 st.set_page_config(
-    page_title="글로벌 시장 대시보드",
+    page_title="Global Markets",
     page_icon="🌐",
     layout="wide"
 )
