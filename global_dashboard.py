@@ -25,16 +25,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
+# -------------------- 상단 레이아웃---------------------
 col_title, col_img_credit = st.columns([7, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
-    #st.markdown("---", unsafe_allow_html=True)
-    #st.markdown("####    주요 시장 성과", unsafe_allow_html=True)
+
 with col_img_credit:
-    # 닐 암스트롱 달착륙 사진(퍼블릭 도메인, NASA) - 다운로드 실패시 대체 아이콘 제공
-    image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg"
-    fallback_icon = "https://cdn-icons-png.flaticon.com/512/3211/3211357.png"  # 우주인 아이콘 (flaticon)
+    image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg" # for parksuk1991
     img_displayed = False
     try:
         response = requests.get(image_url, timeout=5)
@@ -43,14 +40,7 @@ with col_img_credit:
         st.image(img, width=180, caption=None)
         img_displayed = True
     except Exception:
-        try:
-            response = requests.get(fallback_icon, timeout=5)
-            response.raise_for_status()
-            img = Image.open(BytesIO(response.content))
-            st.image(img, width=180, caption=None)
-            img_displayed = True
-        except Exception:
-            st.info("이미지를 불러올 수 없습니다.")
+        st.info("이미지를 불러올 수 없습니다.")
     st.markdown(
         "<div style='margin-top: -1px; text-align:center;'>"
         "<span style='font-size:0.9rem; color:#888;'>Made by parksuk1991</span>"
@@ -93,7 +83,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
-
 
 # =========== 자산 정의 ================
 STOCK_ETFS = {
@@ -172,17 +161,7 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
-
 def get_perf_table_improved(label2ticker, ref_date=None):
-    """
-    개선된 자산 성과 계산 함수
-    
-    주요 개선사항:
-    1. 영업일만 고려한 정확한 기간 계산
-    2. MTD/YTD 로직 개선
-    3. 에러 처리 강화
-    4. 명확한 기간 정의
-    """
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
     
@@ -313,9 +292,6 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def get_sample_calculation_dates(label2ticker, ref_date=None):
-    """
-    샘플 자산으로 실제 계산 기준일을 보여주는 함수
-    """
     if ref_date is None:
         ref_date = datetime.now().date()
     
@@ -364,20 +340,6 @@ def get_sample_calculation_dates(label2ticker, ref_date=None):
         
     except Exception:
         return None, None, None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def get_perf_table_precise(label2ticker, ref_date=None):
     tickers = list(label2ticker.values())
@@ -502,7 +464,6 @@ def get_news_for_ticker(ticker_symbol, limit=1):
             result.append({'ticker': ticker_symbol, 'date': date, 'title': title})
     return result
 
-
 def colorize_return(val):
     try:
         v = float(str(val).replace("%", ""))
@@ -518,11 +479,7 @@ def colorize_return(val):
 def style_perf_table(df, perf_cols):
     return df.style.applymap(colorize_return, subset=perf_cols)
 
-
-
-
-
-# 감정 분류 함수
+# 감정 분류
 def classify_sentiment(score):
     if score >= 0.05:
         return 'Positive'
@@ -559,7 +516,6 @@ def get_news_sentiment_data():
     df = pd.DataFrame(news_list)
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     
-    # 감정 분석
     sid = SentimentIntensityAnalyzer()
     df['Sentiment'] = df['Headline'].apply(
         lambda headline: sid.polarity_scores(headline)['compound'] if headline else 0
@@ -568,7 +524,7 @@ def get_news_sentiment_data():
     
     return df
 
-# 감정 분포 히스토그램 (Plotly)
+# 감정 분포 히스토그램
 def create_sentiment_histogram(df):
     fig = go.Figure()
     
@@ -608,14 +564,13 @@ def create_sentiment_histogram(df):
     
     return fig
 
-# 감정 박스플롯 (Plotly)
+# 감정 박스플롯
 def create_sentiment_boxplot(df):
     # 티커별 평균 감정 점수 계산
     mean_values = df.groupby('Ticker')['Sentiment'].mean().reset_index()
     
     fig = go.Figure()
     
-    # 각 티커별 박스플롯 생성
     tickers = df['Ticker'].unique()
     colors = px.colors.qualitative.Set3[:len(tickers)]
     
@@ -651,7 +606,7 @@ def create_sentiment_boxplot(df):
     
     return fig
 
-# 감정 카테고리 카운트 플롯 (Plotly)
+# 감정 카테고리 카운트 플롯
 def create_sentiment_countplot(df):
     sentiment_counts = df['Sentiment_Category'].value_counts().reset_index()
     sentiment_counts.columns = ['Sentiment_Category', 'Count']
@@ -735,11 +690,7 @@ def show_sentiment_analysis():
         )
 
 
-
-def show_all_performance_tables():
-    """모든 자산 유형별 성과 테이블 표시"""
-    
-    # 성과 컬럼 정의
+def show_all_performance_tables():    
     perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
     
     # 1. 주식시장
@@ -820,9 +771,7 @@ def show_all_performance_tables():
     else:
         st.error("섹터 ETF 성과 데이터를 계산할 수 없습니다.")
     
-    # 계산 방식 안내 (전체 하단에 표시)
     st.markdown("---")
-    # 2열 레이아웃으로 기본 정보와 상세 정보 배치
     col1, col2 = st.columns([3, 2])
     
     with col1:
@@ -832,15 +781,11 @@ def show_all_performance_tables():
         st.caption("• 데이터 부족 시 사용 가능한 가장 오래된 데이터 기준으로 계산")
     
     with col2:
-        # 상세 정보 표시 토글
         with st.expander("📋 상세 계산 기준일 보기"):            
-            # 실제 계산 날짜 (샘플)
-            #st.write("**실제 계산 기준일 (샘플):**")
             sample_label, last_date, actual_dates = get_sample_calculation_dates(STOCK_ETFS)
             
             if sample_label and actual_dates:
                 st.caption(f"**샘플 자산:** {sample_label} | **최근 거래일:** {last_date}")
-
 
                 # 첫 번째 줄: 단기 기간
                 periods_line1 = [f"{period}: {actual_dates[period]}" for period in ['1D', '1W', 'MTD', '1M'] if period in actual_dates]
@@ -854,18 +799,11 @@ def show_all_performance_tables():
                 st.caption("샘플 데이터를 불러올 수 없습니다.")
 
 
-
-
-
-
-
 # =========== MAIN BUTTON ===========
 if update_clicked:
-    # 빈 줄(공백) 추가해서 '주식시장' 부분을 조금 더 내려줌
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
 
-    # ---------- Normalized 차트 구간 설정 아래에 위치 ----------
     st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
     norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
     fig1 = go.Figure()
@@ -903,7 +841,7 @@ if update_clicked:
     for label, etf in SECTOR_ETFS.items():
         top_holdings = get_top_holdings(etf, n=3)
         if top_holdings:
-            # 섹터명에서 괄호와 ETF코드 제거 → "IT (XLK)" → "IT섹터" 등 가공
+            # 섹터명에서 괄호와 ETF코드 제거 → "IT (XLK)" → "IT섹터"
             sector_name = label.split()[0] + " 섹터"
             holding_names = [name for _, name in top_holdings]
             holding_syms = [sym for sym, _ in top_holdings]
@@ -918,8 +856,4 @@ if update_clicked:
         else:
             st.write(f"- {label}: 보유종목 정보 없음")
             
-    # 새로운 감정 분석 섹션 추가
     show_sentiment_analysis()
-
-
-# else 블록 삭제: 안내문구는 사이드바에서 항상 노출
