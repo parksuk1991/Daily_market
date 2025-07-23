@@ -719,7 +719,7 @@ def show_all_performance_tables():
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
     
     # 3. 통화
-    st.subheader("📈 통화")
+    st.subheader("💹 통화")
     with st.spinner("통화 성과 데이터 계산 중..."):
         curr_perf = get_perf_table_improved(CURRENCY)
     
@@ -732,7 +732,7 @@ def show_all_performance_tables():
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
     
     # 4. 암호화폐
-    st.subheader("💹 암호화폐")
+    st.subheader("📈 암호화폐")
     with st.spinner("암호화폐 성과 데이터 계산 중..."):
         crypto_perf = get_perf_table_improved(CRYPTO)
     
