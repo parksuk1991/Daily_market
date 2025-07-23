@@ -20,7 +20,7 @@ except ImportError:
     st.error("lxml 패키지가 필요합니다. requirements.txt에 lxml을 추가하세요.")
 
 st.set_page_config(
-    page_title="Global Markets",
+    page_title="Global Market Monitoring",
     page_icon="🌐",
     layout="wide"
 )
@@ -28,7 +28,7 @@ st.set_page_config(
 # -------------------- 상단 레이아웃: 제목+설명 / 이미지+크레딧 ---------------------
 col_title, col_img_credit = st.columns([7, 1])
 with col_title:
-    st.title("🌐 Global Markets Monitoring")
+    st.title("🌐 Global Market Monitoring")
     #st.markdown("---", unsafe_allow_html=True)
     #st.markdown("####    주요 시장 성과", unsafe_allow_html=True)
 with col_img_credit:
