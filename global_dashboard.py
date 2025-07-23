@@ -9,6 +9,9 @@ import requests
 from PIL import Image
 from io import BytesIO
 from yahooquery import Ticker  # 추가
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+nltk.download('vader_lexicon')
 
 # lxml ImportError 방지
 try:
@@ -289,6 +292,227 @@ def colorize_return(val):
 def style_perf_table(df, perf_cols):
     return df.style.applymap(colorize_return, subset=perf_cols)
 
+
+
+
+
+# 감정 분류 함수
+def classify_sentiment(score):
+    if score >= 0.05:
+        return 'Positive'
+    elif score <= -0.05:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+# 뉴스 데이터 수집 및 감정 분석
+@st.cache_data
+def get_news_sentiment_data():
+    news_list = []
+    for label, etf in SECTOR_ETFS.items():
+        top_holdings = get_top_holdings(etf, n=3)
+        holdings_syms = [sym for sym, _ in top_holdings]
+        for ticker_symbol in holdings_syms:
+            try:
+                ticker = yf.Ticker(ticker_symbol)
+                news = ticker.news
+                for article in news:
+                    content = article.get('content', {})
+                    news_list.append({
+                        'Ticker': ticker_symbol,
+                        'Date': content.get('pubDate'),
+                        'Headline': content.get('title')
+                    })
+            except Exception as e:
+                st.warning(f"{ticker_symbol} 뉴스 데이터 수집 오류: {e}")
+                continue
+    
+    if not news_list:
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(news_list)
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    # 감정 분석
+    sid = SentimentIntensityAnalyzer()
+    df['Sentiment'] = df['Headline'].apply(
+        lambda headline: sid.polarity_scores(headline)['compound'] if headline else 0
+    )
+    df['Sentiment_Category'] = df['Sentiment'].apply(classify_sentiment)
+    
+    return df
+
+# 감정 분포 히스토그램 (Plotly)
+def create_sentiment_histogram(df):
+    fig = go.Figure()
+    
+    # 히스토그램 생성
+    fig.add_trace(go.Histogram(
+        x=df['Sentiment'],
+        nbinsx=20,
+        name='Sentiment Distribution',
+        marker_color='rgba(158, 71, 99, 0.7)',
+        opacity=0.8
+    ))
+    
+    # KDE 곡선 추가 (근사)
+    hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    # 간단한 smoothing을 위한 moving average
+    from scipy import ndimage
+    smoothed = ndimage.gaussian_filter1d(hist, 1)
+    
+    fig.add_trace(go.Scatter(
+        x=bin_centers,
+        y=smoothed * len(df) * (bin_edges[1] - bin_edges[0]),
+        mode='lines',
+        name='KDE',
+        line=dict(color='crimson', width=2)
+    ))
+    
+    fig.update_layout(
+        title='감정 점수 분포',
+        xaxis_title='감정 점수',
+        yaxis_title='빈도',
+        template="plotly_dark",
+        height=400,
+        showlegend=True
+    )
+    
+    return fig
+
+# 감정 박스플롯 (Plotly)
+def create_sentiment_boxplot(df):
+    # 티커별 평균 감정 점수 계산
+    mean_values = df.groupby('Ticker')['Sentiment'].mean().reset_index()
+    
+    fig = go.Figure()
+    
+    # 각 티커별 박스플롯 생성
+    tickers = df['Ticker'].unique()
+    colors = px.colors.qualitative.Set3[:len(tickers)]
+    
+    for i, ticker in enumerate(tickers):
+        ticker_data = df[df['Ticker'] == ticker]['Sentiment']
+        fig.add_trace(go.Box(
+            y=ticker_data,
+            name=ticker,
+            marker_color=colors[i % len(colors)],
+            boxmean=True
+        ))
+    
+    # 평균값 텍스트 추가
+    for i, row in mean_values.iterrows():
+        color = 'red' if row['Sentiment'] >= 0 else 'blue'
+        fig.add_annotation(
+            x=i,
+            y=row['Sentiment'],
+            text=f'{row["Sentiment"]:.2f}',
+            showarrow=False,
+            font=dict(color=color, size=12),
+            bgcolor="rgba(255,255,255,0.8)"
+        )
+    
+    fig.update_layout(
+        title='티커별 감정 점수 분포',
+        xaxis_title='종목',
+        yaxis_title='감정 점수',
+        template="plotly_dark",
+        height=500,
+        showlegend=False
+    )
+    
+    return fig
+
+# 감정 카테고리 카운트 플롯 (Plotly)
+def create_sentiment_countplot(df):
+    sentiment_counts = df['Sentiment_Category'].value_counts().reset_index()
+    sentiment_counts.columns = ['Sentiment_Category', 'Count']
+    
+    # 색상 매핑
+    color_map = {
+        'Positive': 'green',
+        'Negative': 'red',
+        'Neutral': 'gray'
+    }
+    
+    colors = [color_map.get(cat, 'blue') for cat in sentiment_counts['Sentiment_Category']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=sentiment_counts['Sentiment_Category'],
+        y=sentiment_counts['Count'],
+        marker_color=colors,
+        text=sentiment_counts['Count'],
+        textposition='inside',
+        textfont=dict(color='white', size=14)
+    ))
+    
+    fig.update_layout(
+        title='포트폴리오 감정 분포',
+        xaxis_title='감정 카테고리',
+        yaxis_title='뉴스 개수',
+        template="plotly_dark",
+        height=400,
+        showlegend=False
+    )
+    
+    return fig
+
+# Streamlit 앱 메인 부분
+def show_sentiment_analysis():
+    st.subheader("📰 뉴스 감정 분석")
+    
+    # 데이터 로딩
+    with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
+        df = get_news_sentiment_data()
+    
+    if df.empty:
+        st.warning("뉴스 데이터를 가져올 수 없습니다.")
+        return
+    
+    # 기본 통계 정보
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("총 뉴스 수", len(df))
+    with col2:
+        st.metric("평균 감정 점수", f"{df['Sentiment'].mean():.3f}")
+    with col3:
+        positive_pct = (df['Sentiment_Category'] == 'Positive').sum() / len(df) * 100
+        st.metric("긍정 비율", f"{positive_pct:.1f}%")
+    with col4:
+        negative_pct = (df['Sentiment_Category'] == 'Negative').sum() / len(df) * 100
+        st.metric("부정 비율", f"{negative_pct:.1f}%")
+    
+    # 감정 분포 히스토그램
+    st.subheader("감정 점수 분포")
+    fig1 = create_sentiment_histogram(df)
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # 티커별 감정 박스플롯
+    st.subheader("종목별 감정 점수")
+    fig2 = create_sentiment_boxplot(df)
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # 감정 카테고리 분포
+    st.subheader("감정 카테고리 분포")
+    fig3 = create_sentiment_countplot(df)
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    # 상세 데이터 테이블
+    with st.expander("상세 뉴스 데이터 보기"):
+        st.dataframe(
+            df[['Ticker', 'Date', 'Headline', 'Sentiment', 'Sentiment_Category']].sort_values('Date', ascending=False),
+            use_container_width=True
+        )
+
+
+
+
+
+
 # =========== MAIN BUTTON ===========
 if update_clicked:
     # 빈 줄(공백) 추가해서 '주식시장' 부분을 조금 더 내려줌
@@ -389,5 +613,9 @@ if update_clicked:
                     st.write(f"- [{sym}] 뉴스 없음")
         else:
             st.write(f"- {label}: 보유종목 정보 없음")
+            
+    # 새로운 감정 분석 섹션 추가
+    show_sentiment_analysis()
+
 
 # else 블록 삭제: 안내문구는 사이드바에서 항상 노출
