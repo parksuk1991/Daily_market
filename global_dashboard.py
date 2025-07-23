@@ -294,25 +294,6 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     return df_result
 
 
-def get_detailed_performance_info(ref_date=None):
-    """
-    성과 계산의 상세 정보를 제공하는 함수 (간단한 정보)
-    """
-    if ref_date is None:
-        ref_date = datetime.now().date()
-    
-    # 간단한 계산 기준 정보
-    info_data = {
-        '기간': ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y'],
-        '기준': ['1 영업일 전', '5 영업일 전', '월초 첫 거래일', '21 영업일 전', 
-                '63 영업일 전', '126 영업일 전', '연초 첫 거래일', '252 영업일 전', '756 영업일 전'],
-        '설명': ['전일 종가 대비', '1주일 전 대비', '이번 달 첫 거래일 대비', '약 1개월 전 대비',
-                '약 3개월 전 대비', '약 6개월 전 대비', '올해 첫 거래일 대비', '1년 전 대비', '3년 전 대비']
-    }
-    
-    df_info = pd.DataFrame(info_data)
-    return df_info
-
 def get_sample_calculation_dates(label2ticker, ref_date=None):
     """
     샘플 자산으로 실제 계산 기준일을 보여주는 함수
@@ -828,18 +809,13 @@ def show_all_performance_tables():
     
     with col1:
         st.caption("📝 **성과 계산 기준**")
-        st.caption("• 영업일 기준: 1D=1일, 1W=5일, 1M=21일, 3M=63일, 6M=126일, 1Y=252일, 3Y=756일")
-        st.caption("• MTD: 해당 월 첫 거래일 기준, YTD: 해당 연도 첫 거래일 기준")
+        st.caption("• 영업일 기준: 1D=1영업일, 1W=5영업일, 1M=21영업일, 3M=63영업일, 6M=126영업일, 1Y=252영업일, 3Y=756영업일")
+        st.caption("• MTD: 해당 월 첫 영업일 기준, YTD: 해당 연도 첫 영업일 기준")
         st.caption("• 데이터 부족 시 사용 가능한 가장 오래된 데이터 기준으로 계산")
     
     with col2:
         # 상세 정보 표시 토글
-        with st.expander("📋 상세 계산 정보 보기"):
-            # 기본 계산 기준 테이블
-            st.write("**기간별 계산 기준:**")
-            basic_info = get_detailed_performance_info()
-            st.dataframe(basic_info, use_container_width=True, hide_index=True)
-            
+        with st.expander("📋 상세 계산 정보 보기"):            
             # 실제 계산 날짜 (샘플)
             st.write("**실제 계산 기준일 (샘플):**")
             sample_label, last_date, actual_dates = get_sample_calculation_dates(STOCK_ETFS)
