@@ -275,11 +275,18 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     df_result = pd.DataFrame(results)
     
     # 포맷팅
-    # 현재값만 포맷팅 (수익률 열은 숫자로 유지)
+    percentage_cols = ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']
+    for col in percentage_cols:
+        if col in df_result.columns:
+            df_result[col] = df_result[col].apply(
+                lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
+            )
+    
     if '현재값' in df_result.columns:
         df_result['현재값'] = df_result['현재값'].apply(
             lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A"
         )
+    
     return df_result
 
 
@@ -457,20 +464,10 @@ def get_news_for_ticker(ticker_symbol, limit=1):
     return result
 
 def colorize_return(val):
-    # 숫자 타입인 경우와 문자열 타입인 경우 모두 처리
     try:
-        if pd.isna(val):
-            return ""
-        
-        # 이미 숫자인 경우
-        if isinstance(val, (int, float)):
-            v = val
-        else:
-            # 문자열인 경우 % 제거 후 변환
-            v = float(str(val).replace("%", ""))
+        v = float(str(val).replace("%", ""))
     except Exception:
         return ""
-    
     if v > 0:
         return "color: red;"
     elif v < 0:
@@ -479,21 +476,8 @@ def colorize_return(val):
         return ""
 
 def style_perf_table(df, perf_cols):
-    # 스타일 적용 전에 수익률 열을 포맷팅
-    styled = df.copy()
-    
-    # 수익률 열만 퍼센트 포맷 적용
-    for col in perf_cols:
-        if col in styled.columns:
-            styled[col] = styled[col].apply(
-                lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
-            )
-    
-    # 색상 스타일 적용 (원본 숫자 값 기준)
-    return styled.style.apply(
-        lambda x: [colorize_return(df.loc[x.name, col]) if col in perf_cols else "" for col in x.index], 
-        axis=1
-    )
+    return df.style.applymap(colorize_return, subset=perf_cols)
+
 # 감정 분류
 def classify_sentiment(score):
     if score >= 0.05:
