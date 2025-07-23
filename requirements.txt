@@ -5,3 +5,7 @@ pandas>=1.4
 numpy>=1.22
 lxml
 yahooquery
+vaderSentiment
+scipy
+nltk
+SentimentIntensityAnalyzer
