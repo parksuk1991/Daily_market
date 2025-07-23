@@ -629,7 +629,7 @@ def create_sentiment_boxplot(df):
         )
     
     fig.update_layout(
-        title='티커별 감정 점수 분포',
+        title='감정 점수 분포',
         xaxis_title='종목',
         yaxis_title='감정 점수',
         template="plotly_dark",
@@ -665,7 +665,7 @@ def create_sentiment_countplot(df):
     ))
     
     fig.update_layout(
-        title='포트폴리오 감정 분포',
+        title='감정 분포',
         xaxis_title='감정 카테고리',
         yaxis_title='뉴스 개수',
         template="plotly_dark",
