@@ -31,7 +31,7 @@ with col_title:
     st.title("🌐 Global Market Monitoring")
 
 with col_img_credit:
-    image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg" # for parksuk1991
+    image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg" # for parksuk1991
     img_displayed = False
     try:
         response = requests.get(image_url, timeout=5)
@@ -69,7 +69,7 @@ with st.sidebar:
     normalized_months = st.slider(
         "",  # 제목은 위에서 렌더링
         3, 36, 12,
-        help="모든 차트에 적용될 정규화 수익률 기간입니다.",
+        help="모든 차트에 적용될 정규화 수익률 기간을 의미",
         key="norm_months_slider"
     )
     update_clicked = st.button("Update", type="primary", use_container_width=True)
@@ -77,7 +77,7 @@ with st.sidebar:
         """
         <div style='text-align:center; margin-top:20px;'>
             <span style='font-size:0.85rem; color:#d9534f; font-weight:500;'>
-                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼을 눌러주세요!
+                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼 Click!
             </span>
         </div>
         """,
@@ -124,7 +124,6 @@ CURRENCY = {
     '달러-파운드': 'GBPUSD=X',
     '달러-위안': 'CNY=X'
 }
-
 
 CRYPTO = {
     '비트코인 (BTC)': 'BTC-USD',
@@ -533,7 +532,7 @@ def create_sentiment_histogram(df):
         x=df['Sentiment'],
         nbinsx=20,
         name='Sentiment Distribution',
-        marker_color='rgba(158, 71, 99, 0.7)',
+        marker_color='rgba(235, 0, 140, 0.7)',
         opacity=0.8
     ))
     
@@ -541,7 +540,7 @@ def create_sentiment_histogram(df):
     hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     
-    # 간단한 smoothing을 위한 moving average
+    # 간단한 smoothing 위한 moving average
     from scipy import ndimage
     smoothed = ndimage.gaussian_filter1d(hist, 1)
     
@@ -550,7 +549,7 @@ def create_sentiment_histogram(df):
         y=smoothed * len(df) * (bin_edges[1] - bin_edges[0]),
         mode='lines',
         name='KDE',
-        line=dict(color='crimson', width=2)
+        line=dict(color='royalblue', width=2)
     ))
     
     fig.update_layout(
@@ -613,9 +612,9 @@ def create_sentiment_countplot(df):
     
     # 색상 매핑
     color_map = {
-        'Positive': 'green',
-        'Negative': 'red',
-        'Neutral': 'gray'
+        'Positive': 'rgba(235,0,140,0.8)',
+        'Negative': 'rgba(65,105,225,0.8)',
+        'Neutral': 'rgba(102,194,165,0.8)'
     }
     
     colors = [color_map.get(cat, 'blue') for cat in sentiment_counts['Sentiment_Category']]
@@ -644,7 +643,7 @@ def create_sentiment_countplot(df):
 
 # Streamlit 앱 메인 부분
 def show_sentiment_analysis():
-    st.subheader("📰 뉴스 감정 분석")
+    st.subheader("✳️✴️ 뉴스 감정 분석")
     
     # 데이터 로딩
     with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
@@ -657,7 +656,7 @@ def show_sentiment_analysis():
     # 기본 통계 정보
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("총 뉴스 수", len(df))
+        st.metric("총 뉴스 개수", len(df))
     with col2:
         st.metric("평균 감정 점수", f"{df['Sentiment'].mean():.3f}")
     with col3:
@@ -707,7 +706,7 @@ def show_all_performance_tables():
         st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
     
     # 2. 채권시장
-    st.subheader("📊 채권시장")
+    st.subheader("🗠 채권시장")
     with st.spinner("채권시장 성과 데이터 계산 중..."):
         bond_perf = get_perf_table_improved(BOND_ETFS)
     
@@ -720,7 +719,7 @@ def show_all_performance_tables():
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
     
     # 3. 통화
-    st.subheader("📊 통화")
+    st.subheader("💹 통화")
     with st.spinner("통화 성과 데이터 계산 중..."):
         curr_perf = get_perf_table_improved(CURRENCY)
     
@@ -733,7 +732,7 @@ def show_all_performance_tables():
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
     
     # 4. 암호화폐
-    st.subheader("📊 암호화폐")
+    st.subheader("📈 암호화폐")
     with st.spinner("암호화폐 성과 데이터 계산 중..."):
         crypto_perf = get_perf_table_improved(CRYPTO)
     
@@ -746,7 +745,7 @@ def show_all_performance_tables():
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
     
     # 5. 스타일 ETF
-    st.subheader("📊 스타일 ETF")
+    st.subheader("📕 스타일 ETF")
     with st.spinner("스타일 ETF 성과 데이터 계산 중..."):
         style_perf = get_perf_table_improved(STYLE_ETFS)
     
@@ -759,7 +758,7 @@ def show_all_performance_tables():
         st.error("스타일 ETF 성과 데이터를 계산할 수 없습니다.")
     
     # 6. 섹터 ETF
-    st.subheader("📊 섹터 ETF")
+    st.subheader("📘 섹터 ETF")
     with st.spinner("섹터 ETF 성과 데이터 계산 중..."):
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
@@ -804,7 +803,7 @@ if update_clicked:
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
 
-    st.subheader(f"📈 주요 주가지수 수익률 (최근 {normalized_months}개월)")
+    st.subheader(f"✅ 주요 주가지수 수익률 (최근 {normalized_months}개월)")
     norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
     fig1 = go.Figure()
     for col in norm_idx.columns:
@@ -815,7 +814,7 @@ if update_clicked:
     )
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.subheader(f"📈 섹터 ETF 수익률 (최근 {normalized_months}개월)")
+    st.subheader(f"☑️ 섹터 ETF 수익률 (최근 {normalized_months}개월)")
     norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
     fig2 = go.Figure()
     for col in norm_sector.columns:
@@ -826,7 +825,7 @@ if update_clicked:
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader(f"📈 스타일 ETF 수익률 (최근 {normalized_months}개월)")
+    st.subheader(f"☑️ 스타일 ETF 수익률 (최근 {normalized_months}개월)")
     norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
     fig3 = go.Figure()
     for col in norm_style.columns:
@@ -855,5 +854,5 @@ if update_clicked:
                     st.write(f"- [{sym}] 뉴스 없음")
         else:
             st.write(f"- {label}: 보유종목 정보 없음")
-            
+    st.markdown("---")       
     show_sentiment_analysis()
