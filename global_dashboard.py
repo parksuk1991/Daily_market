@@ -31,7 +31,7 @@ with col_title:
     st.title("🌐 Global Market Monitoring")
 
 with col_img_credit:
-    image_url = "https://cdn.theatlantic.com/thumbor/gjwD-uCiv0sHowRxQrQgL9b3Shk=/900x638/media/img/photo/2019/07/apollo-11-moon-landing-photos-50-ye/a01_40-5903/original.jpg" # for parksuk1991
+    image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg" # for parksuk1991
     img_displayed = False
     try:
         response = requests.get(image_url, timeout=5)
