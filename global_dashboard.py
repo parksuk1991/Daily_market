@@ -825,11 +825,11 @@ def show_all_performance_tables():
 
 
                 # 첫 번째 줄: 단기 기간
-                periods_line1 = [f"{period}: {actual_dates[period]}" for period in ['1D', '1W', 'MTD'] if period in actual_dates]
+                periods_line1 = [f"{period}: {actual_dates[period]}" for period in ['1D', '1W', 'MTD', '1M'] if period in actual_dates]
                 st.caption("• " + " | ".join(periods_line1))
 
                 # 두 번째 줄: 중장기 기간  
-                periods_line2 = [f"{period}: {actual_dates[period]}" for period in ['1M', '3M', '6M', 'YTD', '1Y', '3Y'] if period in actual_dates]
+                periods_line2 = [f"{period}: {actual_dates[period]}" for period in ['3M', '6M', 'YTD', '1Y', '3Y'] if period in actual_dates]
                 st.caption("• " + " | ".join(periods_line2))
 
             else:
