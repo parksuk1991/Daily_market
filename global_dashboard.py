@@ -487,25 +487,29 @@ def colorize_return(val):
         return ""
 
 def style_perf_table(df, perf_cols):
-    """테이블 스타일링 - 수정된 버전"""
-    styled = df.style
+    """테이블 스타일링 - 가장 확실한 버전"""
     
-    # 각 퍼센트 컬럼에 대해 포맷팅과 색상을 적용
+    def format_value(val):
+        if pd.isna(val) or not isinstance(val, (int, float)):
+            return "N/A"
+        return f"{val:.2f}"
+    
+    def get_color(val):
+        if pd.isna(val) or not isinstance(val, (int, float)):
+            return ""
+        if val > 0:
+            return "color: red"
+        elif val < 0:
+            return "color: blue"
+        return ""
+    
+    # 먼저 포맷팅
+    styled = df.style.format({col: format_value for col in perf_cols if col in df.columns})
+    
+    # 그 다음 색상 (원본 값 기준)
     for col in perf_cols:
         if col in df.columns:
-            # 포맷팅 적용 (소수점 둘째자리)
-            styled = styled.format({col: lambda x: f"{x:.2f}" if pd.notnull(x) and isinstance(x, (int, float)) else "N/A"})
-            # 색상 적용 (원본 숫자값에 대해)
-            styled = styled.applymap(lambda x: colorize_return(x), subset=[col])
-    
-    return styled
-
-    
-    # 각 퍼센트 컬럼에 대해 포맷팅과 색상을 동시에 적용
-    styled = df.style
-    for col in perf_cols:
-        if col in df.columns:
-            styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
+            styled = styled.applymap(get_color, subset=[col])
     
     return styled
 
