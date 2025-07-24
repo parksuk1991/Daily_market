@@ -457,22 +457,25 @@ def get_news_for_ticker(ticker_symbol, limit=1):
     return result
 
 def colorize_return(val):
-    """값에 따른 색상 지정"""
+    """값에 따른 색상 지정 - 수정된 버전"""
     if pd.isna(val):
         return ""
     
     try:
+        # 숫자인 경우 직접 사용
         if isinstance(val, (int, float)):
             v = float(val)
         elif isinstance(val, str):
             if val in ["N/A", "", "nan"]:
                 return ""
             # '%' 제거하고 숫자로 변환
-            clean_val = val.replace('%', '').replace(' ', '')
+            clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
+            if not clean_val or clean_val == '-':
+                return ""
             v = float(clean_val)
         else:
             return ""
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return ""
     
     # 색상 결정
@@ -484,19 +487,32 @@ def colorize_return(val):
         return ""
 
 def format_percentage(val):
-    """퍼센트 포맷팅 함수 - 순수 숫자만 받아서 소수점 둘째자리로 포맷팅"""
+    """퍼센트 포맷팅 함수 - 수정된 버전"""
     if pd.isna(val):
         return "N/A"
+    
     try:
+        # 숫자인 경우 직접 포맷팅
         if isinstance(val, (int, float)):
             return f"{val:.2f}%"
-        else:
-            # 혹시 문자열이 들어온 경우 '%' 제거 후 다시 포맷팅
-            clean_val = str(val).replace('%', '').replace(' ', '')
-            if clean_val in ['N/A', '', 'nan']:
+        elif isinstance(val, str):
+            if val in ['N/A', '', 'nan']:
                 return "N/A"
-            return f"{float(clean_val):.2f}%"
-    except:
+            # 이미 %가 포함된 경우 그대로 반환 (중복 포맷팅 방지)
+            if '%' in val:
+                try:
+                    # %를 제거하고 다시 포맷팅하여 소수점 자리수 통일
+                    clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
+                    return f"{float(clean_val):.2f}%"
+                except:
+                    return val  # 변환 실패시 원본 반환
+            else:
+                # % 없는 문자열 숫자
+                clean_val = val.replace(' ', '').replace(',', '')
+                return f"{float(clean_val):.2f}%"
+        else:
+            return "N/A"
+    except (ValueError, AttributeError, TypeError):
         return "N/A"
 
 def style_perf_table(df, perf_cols):
