@@ -190,15 +190,15 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     last_idx = available_dates[-1]
     
     periods = {
-        '1D': {'days': 1, 'type': 'business'},
-        '1W': {'days': 5, 'type': 'business'}, 
-        'MTD': {'type': 'month_start'},
-        '1M': {'days': 21, 'type': 'business'},
-        '3M': {'days': 63, 'type': 'business'},
-        '6M': {'days': 126, 'type': 'business'},
-        'YTD': {'type': 'year_start'},
-        '1Y': {'days': 252, 'type': 'business'},
-        '3Y': {'days': 756, 'type': 'business'}
+        '1D(%)': {'days': 1, 'type': 'business'},
+        '1W(%)': {'days': 5, 'type': 'business'}, 
+        'MTD(%)': {'type': 'month_start'},
+        '1M(%)': {'days': 21, 'type': 'business'},
+        '3M(%)': {'days': 63, 'type': 'business'},
+        '6M(%)': {'days': 126, 'type': 'business'},
+        'YTD(%)': {'type': 'year_start'},
+        '1Y(%)': {'days': 252, 'type': 'business'},
+        '3Y(%)': {'days': 756, 'type': 'business'}
     }
     
     results = []
@@ -529,7 +529,7 @@ def show_sentiment_analysis():
         )
 
 def show_all_performance_tables():
-    perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+     perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
     # 주식시장
     st.subheader("📊 주식시장")
     with st.spinner("주식시장 성과 데이터 계산 중..."):
