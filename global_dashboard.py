@@ -13,7 +13,6 @@ import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 nltk.download('vader_lexicon')
 
-# lxml ImportError 방지
 try:
     import lxml
 except ImportError:
@@ -29,9 +28,8 @@ st.set_page_config(
 col_title, col_img_credit = st.columns([7, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
-
 with col_img_credit:
-    image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg" # for parksuk1991
+    image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg"
     try:
         response = requests.get(image_url, timeout=5)
         response.raise_for_status()
@@ -97,7 +95,6 @@ STOCK_ETFS = {
     '브라질(Brazil, EWZ)': 'EWZ',
     '캐나다(Canada, EWC)': 'EWC'
 }
-
 BOND_ETFS = {
     '미국 장기국채(TLT)': 'TLT',
     '미국 단기국채(SHY)': 'SHY',
@@ -110,7 +107,6 @@ BOND_ETFS = {
     '미국 국채(BND)': 'BND',
     '단기국채(SPTS)': 'SPTS'
 }
-
 CURRENCY = {
     '달러인덱스': 'DX-Y.NYB',
     '달러-원': 'KRW=X',
@@ -121,7 +117,6 @@ CURRENCY = {
     '달러-파운드': 'GBPUSD=X',
     '달러-위안': 'CNY=X'
 }
-
 CRYPTO = {
     '비트코인 (BTC)': 'BTC-USD',
     '이더리움 (ETH)': 'ETH-USD',
@@ -134,7 +129,6 @@ CRYPTO = {
     '도지코인 (DOGE)': 'DOGE-USD',
     '아발란체 (AVAX)': 'AVAX-USD',
 }
-
 SECTOR_ETFS = {
     'IT (XLK)': 'XLK',
     '헬스케어 (XLV)': 'XLV',
@@ -157,16 +151,14 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
+# ---- 주요 데이터 함수들 ----
 def get_perf_table_improved(label2ticker, ref_date=None):
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
-    
     if ref_date is None:
         ref_date = datetime.now().date()
-    
     start = ref_date - timedelta(days=4*365)
     end = ref_date + timedelta(days=1)
-    
     try:
         df = yf.download(tickers, start=start, end=end, progress=False)['Close']
         if isinstance(df, pd.Series):
@@ -176,19 +168,15 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     except Exception as e:
         st.error(f"데이터 다운로드 오류: {e}")
         return pd.DataFrame()
-    
     if df.empty:
         st.warning("다운로드된 데이터가 없습니다.")
         return pd.DataFrame()
-    
     available_dates = df.index[df.index.date <= ref_date]
     if len(available_dates) == 0:
         st.warning(f"기준일({ref_date}) 이전의 데이터가 없습니다.")
         return pd.DataFrame()
-    
     last_trade_date = available_dates[-1].date()
     last_idx = available_dates[-1]
-    
     periods = {
         '1D(%)': {'days': 1, 'type': 'business'},
         '1W(%)': {'days': 5, 'type': 'business'}, 
@@ -200,23 +188,18 @@ def get_perf_table_improved(label2ticker, ref_date=None):
         '1Y(%)': {'days': 252, 'type': 'business'},
         '3Y(%)': {'days': 756, 'type': 'business'}
     }
-    
     results = []
-    
     for label, ticker in label2ticker.items():
         row = {'자산명': label}
         series = df[ticker].dropna()
-        
         if last_idx not in series.index or len(series) == 0:
             row['현재값'] = np.nan
             for period_key in periods.keys():
                 row[period_key] = np.nan
             results.append(row)
             continue
-        
         curr_val = series.loc[last_idx]
         row['현재값'] = curr_val
-        
         for period_key, period_config in periods.items():
             base_val = None
             try:
@@ -245,7 +228,6 @@ def get_perf_table_improved(label2ticker, ref_date=None):
             except Exception:
                 row[period_key] = np.nan
         results.append(row)
-    
     df_result = pd.DataFrame(results)
     if '현재값' in df_result.columns:
         df_result['현재값'] = df_result['현재값'].apply(
@@ -357,14 +339,12 @@ def colorize_return(val):
         return ""
 
 def style_perf_table(df, perf_cols):
-    # 각 퍼센트 컬럼에 대해 포맷팅과 색상을 적용
     styled = df.style
     for col in perf_cols:
         if col in df.columns:
             styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
     return styled
 
-# 감정 분류
 def classify_sentiment(score):
     if score >= 0.05:
         return 'Positive'
@@ -376,9 +356,11 @@ def classify_sentiment(score):
 @st.cache_data
 def get_news_sentiment_data():
     news_list = []
+    all_syms = []
     for label, etf in SECTOR_ETFS.items():
         top_holdings = get_top_holdings(etf, n=3)
         holdings_syms = [sym for sym, _ in top_holdings]
+        all_syms.extend(holdings_syms)
         for ticker_symbol in holdings_syms:
             try:
                 ticker = yf.Ticker(ticker_symbol)
@@ -394,7 +376,7 @@ def get_news_sentiment_data():
                 st.warning(f"{ticker_symbol} 뉴스 데이터 수집 오류: {e}")
                 continue
     if not news_list:
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     df = pd.DataFrame(news_list)
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     sid = SentimentIntensityAnalyzer()
@@ -402,7 +384,7 @@ def get_news_sentiment_data():
         lambda headline: sid.polarity_scores(headline)['compound'] if headline else 0
     )
     df['Sentiment_Category'] = df['Sentiment'].apply(classify_sentiment)
-    return df
+    return df, list(set(all_syms))
 
 def create_sentiment_histogram(df):
     fig = go.Figure()
@@ -495,13 +477,86 @@ def create_sentiment_countplot(df):
     )
     return fig
 
+def get_analyst_report_data(ticker_syms):
+    rows = []
+    for sym in ticker_syms:
+        try:
+            ticker = yf.Ticker(sym)
+            info = ticker.info
+            current_price = info.get('regularMarketPrice')
+            target_price = info.get('targetMeanPrice')
+            name = info.get('shortName') or info.get('longName') or ''
+            upside = None
+            if target_price and current_price and current_price != 0:
+                upside = ((target_price / current_price) - 1) * 100
+            rows.append({
+                'Ticker': sym,
+                '종목명': name,
+                '애널리스트 의견 등급 점수': info.get('recommendationMean'),
+                '애널리스트 의견': info.get('recommendationKey'),
+                '애널리스트 목표가(평균)': target_price,
+                '현재가': current_price,
+                '상승여력': upside
+            })
+        except Exception:
+            rows.append({
+                'Ticker': sym,
+                '종목명': '',
+                '애널리스트 의견 등급 점수': None,
+                '애널리스트 의견': None,
+                '애널리스트 목표가(평균)': None,
+                '현재가': None,
+                '상승여력': None
+            })
+    df = pd.DataFrame(rows)
+    df = df[['Ticker', '종목명', '애널리스트 의견 등급 점수', '애널리스트 의견', '애널리스트 목표가(평균)', '현재가', '상승여력']]
+    return df
+
+def get_valuation_eps_table(ticker_syms):
+    rows = []
+    for sym in ticker_syms:
+        try:
+            ticker = yf.Ticker(sym)
+            info = ticker.info
+            name = info.get('shortName') or info.get('longName') or ''
+            trailingPE = info.get('trailingPE')
+            forwardPE = info.get('forwardPE')
+            trailingEPS = info.get('trailingEps') or info.get('trailingEPS')
+            forwardEPS = info.get('forwardEps') or info.get('forwardEPS')
+            eps_growth = None
+            if trailingEPS is not None and forwardEPS is not None and trailingEPS != 0:
+                eps_growth = ((forwardEPS / trailingEPS) - 1) * 100
+            rows.append({
+                'Ticker': sym,
+                '종목명': name,
+                '현재 PE': trailingPE,
+                '선행 PE': forwardPE,
+                '현재 EPS': trailingEPS,
+                '선행 EPS': forwardEPS,
+                'EPS 상승률': eps_growth
+            })
+        except Exception:
+            rows.append({
+                'Ticker': sym,
+                '종목명': '',
+                '현재 PE': None,
+                '선행 PE': None,
+                '현재 EPS': None,
+                '선행 EPS': None,
+                'EPS 상승률': None
+            })
+    df = pd.DataFrame(rows)
+    df = df[['Ticker', '종목명', '현재 PE', '선행 PE', '현재 EPS', '선행 EPS', 'EPS 상승률']]
+    return df
+
 def show_sentiment_analysis():
     st.subheader("✳️✴️ 주요 종목 뉴스 감정 분석")
     with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
-        df = get_news_sentiment_data()
+        df, ticker_syms = get_news_sentiment_data()
     if df.empty:
         st.warning("뉴스 데이터를 가져올 수 없습니다.")
         return
+
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("총 뉴스 개수", len(df))
@@ -513,24 +568,57 @@ def show_sentiment_analysis():
     with col4:
         negative_pct = (df['Sentiment_Category'] == 'Negative').sum() / len(df) * 100
         st.metric("부정 비율", f"{negative_pct:.1f}%")
-    st.subheader("감정 점수 분포")
-    fig1 = create_sentiment_histogram(df)
-    st.plotly_chart(fig1, use_container_width=True)
+
+    st.subheader("감정 점수 및 카테고리 분포")
+    chart_col1, chart_col2 = st.columns(2)
+    with chart_col1:
+        fig1 = create_sentiment_histogram(df)
+        st.plotly_chart(fig1, use_container_width=True)
+    with chart_col2:
+        fig3 = create_sentiment_countplot(df)
+        st.plotly_chart(fig3, use_container_width=True)
+
     st.subheader("종목별 감정 점수")
     fig2 = create_sentiment_boxplot(df)
     st.plotly_chart(fig2, use_container_width=True)
-    st.subheader("감정 카테고리 분포")
-    fig3 = create_sentiment_countplot(df)
-    st.plotly_chart(fig3, use_container_width=True)
+
     with st.expander("상세 뉴스 데이터 보기"):
         st.dataframe(
             df[['Ticker', 'Date', 'Headline', 'Sentiment', 'Sentiment_Category']].sort_values('Date', ascending=False),
             use_container_width=True
         )
 
+    st.markdown("---")
+    # 애널리스트 리포트 요약 한 번만 출력
+    st.subheader("🧑‍💼 33개 주요 종목 애널리스트 리포트 요약")
+    st.caption("• 최근 3~6개월 내의 애널리스트 리포트에서 제시된 목표가(Price Target) 기준")
+    analyst_df = get_analyst_report_data(ticker_syms)
+    st.dataframe(
+        analyst_df.style.format({
+            '애널리스트 의견 등급 점수': '{:.2f}',
+            '애널리스트 목표가(평균)': '{:,.2f}',
+            '현재가': '{:,.2f}',
+            '상승여력': '{:.1f}%'
+        }).highlight_null('lightgray'),
+        use_container_width=True, height=min(900, 30 + 30*len(analyst_df))
+    )
+    # 밸류에이션 및 EPS 추이 한 번만 출력
+    st.subheader("📊 33개 주요 종목 밸류에이션 및 EPS 추이")
+    st.caption("• 현재 PE, 선행 PE, 현재 EPS, 선행 EPS 및 EPS 상승률을 함께 표시")
+    valuation_df = get_valuation_eps_table(ticker_syms)
+    st.dataframe(
+        valuation_df.style.format({
+            '현재 PE': '{:.2f}',
+            '선행 PE': '{:.2f}',
+            '현재 EPS': '{:.2f}',
+            '선행 EPS': '{:.2f}',
+            'EPS 상승률': '{:.1f}%'
+        }).background_gradient(subset=['EPS 상승률'], cmap='RdPu'),
+        use_container_width=True, height=min(900, 30 + 30*len(valuation_df))
+    )
+
 def show_all_performance_tables():
     perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
-    # 주식시장
     st.subheader("📊 주식시장")
     with st.spinner("주식시장 성과 데이터 계산 중..."):
         stock_perf = get_perf_table_improved(STOCK_ETFS)
@@ -541,7 +629,6 @@ def show_all_performance_tables():
         )
     else:
         st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
-    # 채권시장
     st.subheader("🗠 채권시장")
     with st.spinner("채권시장 성과 데이터 계산 중..."):
         bond_perf = get_perf_table_improved(BOND_ETFS)
@@ -552,7 +639,6 @@ def show_all_performance_tables():
         )
     else:
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
-    # 통화
     st.subheader("💹 통화")
     with st.spinner("통화 성과 데이터 계산 중..."):
         curr_perf = get_perf_table_improved(CURRENCY)
@@ -563,7 +649,6 @@ def show_all_performance_tables():
         )
     else:
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
-    # 암호화폐
     st.subheader("📈 암호화폐")
     with st.spinner("암호화폐 성과 데이터 계산 중..."):
         crypto_perf = get_perf_table_improved(CRYPTO)
@@ -574,7 +659,6 @@ def show_all_performance_tables():
         )
     else:
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
-    # 스타일 ETF
     st.subheader("📕 스타일 ETF")
     with st.spinner("스타일 ETF 성과 데이터 계산 중..."):
         style_perf = get_perf_table_improved(STYLE_ETFS)
@@ -585,7 +669,6 @@ def show_all_performance_tables():
         )
     else:
         st.error("스타일 ETF 성과 데이터를 계산할 수 없습니다.")
-    # 섹터 ETF
     st.subheader("📘 섹터 ETF")
     with st.spinner("섹터 ETF 성과 데이터 계산 중..."):
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
@@ -596,7 +679,6 @@ def show_all_performance_tables():
         )
     else:
         st.error("섹터 ETF 성과 데이터를 계산할 수 없습니다.")
-
     st.markdown("---")
     col1, col2 = st.columns([3, 2])
     with col1:
