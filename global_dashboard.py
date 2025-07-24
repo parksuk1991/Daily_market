@@ -408,8 +408,8 @@ def get_perf_table_precise(label2ticker, ref_date=None):
         results.append(row)
 
     df_r = pd.DataFrame(results)
-    for col in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
-        df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
+    #for col in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
+    #    df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
     df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return df_r
 
@@ -462,14 +462,14 @@ def colorize_return(val):
         return ""
     
     try:
-        # 숫자 값에서 색상 결정
         if isinstance(val, (int, float)):
             v = float(val)
         elif isinstance(val, str):
-            if val in ["N/A", ""]:
+            if val in ["N/A", "", "nan"]:
                 return ""
-            # "%"를 제거하고 숫자로 변환
-            v = float(val.replace("%", ""))
+            # '%' 제거하고 숫자로 변환
+            clean_val = val.replace('%', '').replace(' ', '')
+            v = float(clean_val)
         else:
             return ""
     except (ValueError, AttributeError):
@@ -484,15 +484,18 @@ def colorize_return(val):
         return ""
 
 def format_percentage(val):
-    """퍼센트 포맷팅 함수 - 숫자만 받아서 처리"""
+    """퍼센트 포맷팅 함수 - 순수 숫자만 받아서 소수점 둘째자리로 포맷팅"""
     if pd.isna(val):
         return "N/A"
     try:
-        # 숫자 값만 처리 (문자열은 이미 포맷팅된 것으로 간주)
         if isinstance(val, (int, float)):
             return f"{val:.2f}%"
         else:
-            return str(val)  # 이미 포맷팅된 문자열
+            # 혹시 문자열이 들어온 경우 '%' 제거 후 다시 포맷팅
+            clean_val = str(val).replace('%', '').replace(' ', '')
+            if clean_val in ['N/A', '', 'nan']:
+                return "N/A"
+            return f"{float(clean_val):.2f}%"
     except:
         return "N/A"
 
