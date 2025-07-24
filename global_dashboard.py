@@ -529,7 +529,7 @@ def show_sentiment_analysis():
         )
 
 def show_all_performance_tables():
-     perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
+    perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
     # 주식시장
     st.subheader("📊 주식시장")
     with st.spinner("주식시장 성과 데이터 계산 중..."):
