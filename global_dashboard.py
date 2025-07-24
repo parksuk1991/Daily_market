@@ -484,18 +484,18 @@ def colorize_return(val):
         return ""
 
 def format_percentage(val):
-    """퍼센트 포맷팅 함수 - 순수 숫자만 받아서 소수점 둘째자리로 포맷팅"""
+    """퍼센트 포맷팅 함수 - '%' 없이 소수점 둘째자리까지만 표시"""
     if pd.isna(val):
         return "N/A"
     try:
         if isinstance(val, (int, float)):
-            return f"{val:.2f}%"
+            return f"{val:.2f}"
         else:
             # 혹시 문자열이 들어온 경우 '%' 제거 후 다시 포맷팅
             clean_val = str(val).replace('%', '').replace(' ', '')
             if clean_val in ['N/A', '', 'nan']:
                 return "N/A"
-            return f"{float(clean_val):.2f}%"
+            return f"{float(clean_val):.2f}"
     except:
         return "N/A"
 
@@ -742,13 +742,13 @@ def show_all_performance_tables():
     
     if not stock_perf.empty:
         # 컬럼명 변경
-        display_df = stock_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        #display_df = stock_perf.copy()
+        #for i, old_col in enumerate(original_cols):
+        #    if old_col in display_df.columns:
+        #        display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=490
         )
     else:
@@ -760,13 +760,13 @@ def show_all_performance_tables():
         bond_perf = get_perf_table_improved(BOND_ETFS)
     
     if not bond_perf.empty:
-        display_df = bond_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        #display_df = bond_perf.copy()
+        #for i, old_col in enumerate(original_cols):
+        #    if old_col in display_df.columns:
+        #        display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -778,13 +778,13 @@ def show_all_performance_tables():
         curr_perf = get_perf_table_improved(CURRENCY)
     
     if not curr_perf.empty:
-        display_df = curr_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        #display_df = curr_perf.copy()
+        #for i, old_col in enumerate(original_cols):
+        #    if old_col in display_df.columns:
+        #        display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=315
         )
     else:
@@ -796,13 +796,13 @@ def show_all_performance_tables():
         crypto_perf = get_perf_table_improved(CRYPTO)
     
     if not crypto_perf.empty:
-        display_df = crypto_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        #display_df = crypto_perf.copy()
+        #for i, old_col in enumerate(original_cols):
+        #    if old_col in display_df.columns:
+        #        display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -814,13 +814,13 @@ def show_all_performance_tables():
         style_perf = get_perf_table_improved(STYLE_ETFS)
     
     if not style_perf.empty:
-        display_df = style_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        #display_df = style_perf.copy()
+        #for i, old_col in enumerate(original_cols):
+        #    if old_col in display_df.columns:
+        #        display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(style_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=245
         )
     else:
@@ -832,13 +832,13 @@ def show_all_performance_tables():
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
     if not sector_perf.empty:
-        display_df = sector_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        #display_df = sector_perf.copy()
+        #for i, old_col in enumerate(original_cols):
+        #    if old_col in display_df.columns:
+        #        display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=420
         )
     else:
