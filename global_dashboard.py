@@ -457,7 +457,7 @@ def get_news_for_ticker(ticker_symbol, limit=1):
     return result
 
 def colorize_return(val):
-    """값에 따른 색상 지정 - % 없는 숫자 처리"""
+    """값에 따른 색상 지정"""
     if pd.isna(val):
         return ""
     
@@ -468,8 +468,8 @@ def colorize_return(val):
         elif isinstance(val, str):
             if val in ["N/A", "", "nan"]:
                 return ""
-            # % 제거하고 숫자로 변환
-            clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
+            # 문자열에서 숫자 추출
+            clean_val = str(val).replace('%', '').replace(' ', '').replace(',', '')
             if not clean_val or clean_val == '-':
                 return ""
             v = float(clean_val)
@@ -486,36 +486,39 @@ def colorize_return(val):
     else:
         return ""
 
-def format_percentage(val):
-    """퍼센트 포맷팅 함수 - % 없는 소수점 둘째자리 숫자로 반환"""
-    if pd.isna(val):
-        return "N/A"
+#def format_percentage(val):
+#    """퍼센트 포맷팅 함수 - % 없는 소수점 둘째자리 숫자로 반환"""
+#    if pd.isna(val):
+#        return "N/A"
     
-    try:
+#    try:
         # 숫자인 경우 직접 포맷팅 (% 없이)
-        if isinstance(val, (int, float)):
-            return f"{val:.2f}"
-        elif isinstance(val, str):
-            if val in ['N/A', '', 'nan']:
-                return "N/A"
-            # % 제거하고 숫자로 변환 후 소수점 둘째자리로 포맷팅
-            clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
-            if not clean_val or clean_val == '-':
-                return "N/A"
-            return f"{float(clean_val):.2f}"
-        else:
-            return "N/A"
-    except (ValueError, AttributeError, TypeError):
-        return "N/A"
+#        if isinstance(val, (int, float)):
+#            return f"{val:.2f}"
+#        elif isinstance(val, str):
+#            if val in ['N/A', '', 'nan']:
+#                return "N/A"
+#            # % 제거하고 숫자로 변환 후 소수점 둘째자리로 포맷팅
+#            clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
+#            if not clean_val or clean_val == '-':
+#                return "N/A"
+#            return f"{float(clean_val):.2f}"
+#        else:
+#            return "N/A"
+#    except (ValueError, AttributeError, TypeError):
+#        return "N/A"
 
 def style_perf_table(df, perf_cols):
-    """테이블 스타일링 - 색상과 포맷팅 적용"""
+    """테이블 스타일링 - 수정된 버전"""
     styled = df.style
     
     # 각 퍼센트 컬럼에 대해 포맷팅과 색상을 적용
     for col in perf_cols:
         if col in df.columns:
-            styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
+            # 포맷팅 적용 (소수점 둘째자리)
+            styled = styled.format({col: lambda x: f"{x:.2f}" if pd.notnull(x) and isinstance(x, (int, float)) else "N/A"})
+            # 색상 적용 (원본 숫자값에 대해)
+            styled = styled.applymap(lambda x: colorize_return(x), subset=[col])
     
     return styled
 
