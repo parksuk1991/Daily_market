@@ -457,7 +457,7 @@ def get_news_for_ticker(ticker_symbol, limit=1):
     return result
 
 def colorize_return(val):
-    """값에 따른 색상 지정 - 수정된 버전"""
+    """값에 따른 색상 지정 - % 없는 숫자 처리"""
     if pd.isna(val):
         return ""
     
@@ -468,7 +468,7 @@ def colorize_return(val):
         elif isinstance(val, str):
             if val in ["N/A", "", "nan"]:
                 return ""
-            # '%' 제거하고 숫자로 변환
+            # % 제거하고 숫자로 변환
             clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
             if not clean_val or clean_val == '-':
                 return ""
@@ -487,29 +487,22 @@ def colorize_return(val):
         return ""
 
 def format_percentage(val):
-    """퍼센트 포맷팅 함수 - 수정된 버전"""
+    """퍼센트 포맷팅 함수 - % 없는 소수점 둘째자리 숫자로 반환"""
     if pd.isna(val):
         return "N/A"
     
     try:
-        # 숫자인 경우 직접 포맷팅
+        # 숫자인 경우 직접 포맷팅 (% 없이)
         if isinstance(val, (int, float)):
-            return f"{val:.2f}%"
+            return f"{val:.2f}"
         elif isinstance(val, str):
             if val in ['N/A', '', 'nan']:
                 return "N/A"
-            # 이미 %가 포함된 경우 그대로 반환 (중복 포맷팅 방지)
-            if '%' in val:
-                try:
-                    # %를 제거하고 다시 포맷팅하여 소수점 자리수 통일
-                    clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
-                    return f"{float(clean_val):.2f}%"
-                except:
-                    return val  # 변환 실패시 원본 반환
-            else:
-                # % 없는 문자열 숫자
-                clean_val = val.replace(' ', '').replace(',', '')
-                return f"{float(clean_val):.2f}%"
+            # % 제거하고 숫자로 변환 후 소수점 둘째자리로 포맷팅
+            clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
+            if not clean_val or clean_val == '-':
+                return "N/A"
+            return f"{float(clean_val):.2f}"
         else:
             return "N/A"
     except (ValueError, AttributeError, TypeError):
@@ -764,7 +757,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=490
         )
     else:
@@ -782,7 +775,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -800,7 +793,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=315
         )
     else:
@@ -818,7 +811,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -836,7 +829,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(stlye_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=245
         )
     else:
@@ -854,7 +847,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(display_df.set_index('자산명'), perf_cols),
+            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=420
         )
     else:
