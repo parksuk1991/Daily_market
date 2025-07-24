@@ -486,28 +486,6 @@ def colorize_return(val):
     else:
         return ""
 
-#def format_percentage(val):
-#    """퍼센트 포맷팅 함수 - % 없는 소수점 둘째자리 숫자로 반환"""
-#    if pd.isna(val):
-#        return "N/A"
-    
-#    try:
-        # 숫자인 경우 직접 포맷팅 (% 없이)
-#        if isinstance(val, (int, float)):
-#            return f"{val:.2f}"
-#        elif isinstance(val, str):
-#            if val in ['N/A', '', 'nan']:
-#                return "N/A"
-#            # % 제거하고 숫자로 변환 후 소수점 둘째자리로 포맷팅
-#            clean_val = val.replace('%', '').replace(' ', '').replace(',', '')
-#            if not clean_val or clean_val == '-':
-#                return "N/A"
-#            return f"{float(clean_val):.2f}"
-#        else:
-#            return "N/A"
-#    except (ValueError, AttributeError, TypeError):
-#        return "N/A"
-
 def style_perf_table(df, perf_cols):
     """테이블 스타일링 - 수정된 버전"""
     styled = df.style
