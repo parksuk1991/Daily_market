@@ -11,6 +11,7 @@ from io import BytesIO
 from yahooquery import Ticker
 import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import matplotlib.pyplot as plt
 nltk.download('vader_lexicon')
 
 try:
