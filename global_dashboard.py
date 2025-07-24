@@ -274,18 +274,20 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     # 결과 DataFrame 생성
     df_result = pd.DataFrame(results)
     
-    # 포맷팅
-    percentage_cols = ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']
-    for col in percentage_cols:
-        if col in df_result.columns:
-            df_result[col] = df_result[col].apply(
-                lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
-            )
-    
+    # 현재값 포맷팅
     if '현재값' in df_result.columns:
         df_result['현재값'] = df_result['현재값'].apply(
             lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A"
         )
+    
+    # *** 중요: 퍼센트 포맷팅은 display용 컬럼을 별도로 생성 ***
+    percentage_cols = ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']
+    for col in percentage_cols:
+        if col in df_result.columns:
+            # 정렬을 위해 숫자 값은 그대로 유지하고, display용 컬럼을 따로 생성
+            df_result[f'{col}_display'] = df_result[col].apply(
+                lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
+            )
     
     return df_result
 
@@ -691,6 +693,7 @@ def show_sentiment_analysis():
 
 def show_all_performance_tables():    
     perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+    display_cols = ['1D_display','1W_display','MTD_display','1M_display','3M_display','6M_display','YTD_display','1Y_display','3Y_display']
     
     # 1. 주식시장
     st.subheader("📊 주식시장")
@@ -698,8 +701,12 @@ def show_all_performance_tables():
         stock_perf = get_perf_table_improved(STOCK_ETFS)
     
     if not stock_perf.empty:
+        # display용 컬럼만 보여주고, 정렬은 원본 숫자 컬럼을 사용
+        display_df = stock_perf[['자산명', '현재값'] + display_cols].copy()
+        display_df.columns = ['자산명', '현재값'] + perf_cols  # 컬럼명을 원래대로 변경
+        
         st.dataframe(
-            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=490
         )
     else:
@@ -711,8 +718,11 @@ def show_all_performance_tables():
         bond_perf = get_perf_table_improved(BOND_ETFS)
     
     if not bond_perf.empty:
+        display_df = bond_perf[['자산명', '현재값'] + display_cols].copy()
+        display_df.columns = ['자산명', '현재값'] + perf_cols
+        
         st.dataframe(
-            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -724,8 +734,11 @@ def show_all_performance_tables():
         curr_perf = get_perf_table_improved(CURRENCY)
     
     if not curr_perf.empty:
+        display_df = curr_perf[['자산명', '현재값'] + display_cols].copy()
+        display_df.columns = ['자산명', '현재값'] + perf_cols
+        
         st.dataframe(
-            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=315
         )
     else:
@@ -737,8 +750,11 @@ def show_all_performance_tables():
         crypto_perf = get_perf_table_improved(CRYPTO)
     
     if not crypto_perf.empty:
+        display_df = crypto_perf[['자산명', '현재값'] + display_cols].copy()
+        display_df.columns = ['자산명', '현재값'] + perf_cols
+        
         st.dataframe(
-            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -750,8 +766,11 @@ def show_all_performance_tables():
         style_perf = get_perf_table_improved(STYLE_ETFS)
     
     if not style_perf.empty:
+        display_df = style_perf[['자산명', '현재값'] + display_cols].copy()
+        display_df.columns = ['자산명', '현재값'] + perf_cols
+        
         st.dataframe(
-            style_perf_table(style_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=245
         )
     else:
@@ -763,8 +782,11 @@ def show_all_performance_tables():
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
     if not sector_perf.empty:
+        display_df = sector_perf[['자산명', '현재값'] + display_cols].copy()
+        display_df.columns = ['자산명', '현재값'] + perf_cols
+        
         st.dataframe(
-            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=420
         )
     else:
