@@ -829,7 +829,7 @@ def show_all_performance_tables():
                 display_df = display_df.rename(columns={old_col: perf_cols[i]})
         
         st.dataframe(
-            style_perf_table(stlye_perf.set_index('자산명'), perf_cols),
+            style_perf_table(style_perf.set_index('자산명'), perf_cols),
             use_container_width=True, height=245
         )
     else:
