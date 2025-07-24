@@ -591,7 +591,7 @@ def show_sentiment_analysis():
 
     st.markdown("---")
     # 애널리스트 리포트 요약 한 번만 출력
-    st.subheader("🧑‍💼 33개 주요 종목 애널리스트 리포트 요약")
+    st.subheader("🧑‍💼 주요 종목 애널리스트 리포트 요약")
     st.caption("• 최근 3~6개월 내의 애널리스트 리포트에서 제시된 목표가(Price Target) 기준")
     analyst_df = get_analyst_report_data(ticker_syms)
     st.dataframe(
@@ -604,8 +604,8 @@ def show_sentiment_analysis():
         use_container_width=True, height=min(900, 30 + 30*len(analyst_df))
     )
     # 밸류에이션 및 EPS 추이 한 번만 출력
-    st.subheader("📊 33개 주요 종목 밸류에이션 및 EPS 추이")
-    st.caption("• 현재 PE, 선행 PE, 현재 EPS, 선행 EPS 및 EPS 상승률을 함께 표시")
+    st.subheader("📊 주요 종목 밸류에이션 및 EPS 추이")
+    st.caption("• 현재 PE, 선행 PE, 현재 EPS, 선행 EPS 및 EPS 상승률")
     valuation_df = get_valuation_eps_table(ticker_syms)
     st.dataframe(
         valuation_df.style.format({
