@@ -496,7 +496,7 @@ def create_sentiment_countplot(df):
     return fig
 
 def show_sentiment_analysis():
-    st.subheader("✳️✴️ 뉴스 감정 분석")
+    st.subheader("✳️✴️ 주요 종목 뉴스 감정 분석")
     with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
         df = get_news_sentiment_data()
     if df.empty:
