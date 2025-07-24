@@ -280,15 +280,6 @@ def get_perf_table_improved(label2ticker, ref_date=None):
             lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A"
         )
     
-    # *** 중요: 퍼센트 포맷팅은 display용 컬럼을 별도로 생성 ***
-    #percentage_cols = ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']
-    #for col in percentage_cols:
-    #    if col in df_result.columns:
-    #        # 정렬을 위해 숫자 값은 그대로 유지하고, display용 컬럼을 따로 생성
-    #        df_result[f'{col}_display'] = df_result[col].apply(
-    #            lambda x: f"{x:.2f}%" if pd.notnull(x) else "N/A"
-    #        )
-    
     return df_result
 
 
@@ -466,70 +457,56 @@ def get_news_for_ticker(ticker_symbol, limit=1):
     return result
 
 def colorize_return(val):
-    """값에 따른 색상 지정 및 퍼센트 포맷팅"""
+    """값에 따른 색상 지정"""
     if pd.isna(val):
         return ""
     
     try:
-        # 이미 숫자인 경우와 문자열인 경우 모두 처리
-        if isinstance(val, str):
+        # 숫자 값에서 색상 결정
+        if isinstance(val, (int, float)):
+            v = float(val)
+        elif isinstance(val, str):
             if val in ["N/A", ""]:
                 return ""
+            # "%"를 제거하고 숫자로 변환
             v = float(val.replace("%", ""))
         else:
-            v = float(val)
+            return ""
     except (ValueError, AttributeError):
         return ""
     
     # 색상 결정
     if v > 0:
-        color = "color: red;"
+        return "color: red;"
     elif v < 0:
-        color = "color: blue;"
+        return "color: blue;"
     else:
-        color = ""
-    
-    return color
+        return ""
 
 def format_percentage(val):
-    """퍼센트 포맷팅 함수"""
+    """퍼센트 포맷팅 함수 - 숫자만 받아서 처리"""
     if pd.isna(val):
         return "N/A"
     try:
-        if isinstance(val, str):
-            if val in ["N/A", ""]:
-                return "N/A"
-            return val  # 이미 포맷팅된 경우
-        else:
+        # 숫자 값만 처리 (문자열은 이미 포맷팅된 것으로 간주)
+        if isinstance(val, (int, float)):
             return f"{val:.2f}%"
+        else:
+            return str(val)  # 이미 포맷팅된 문자열
     except:
         return "N/A"
 
 def style_perf_table(df, perf_cols):
-    """테이블 스타일링 - 색상과 포맷팅 동시 적용"""
-    def apply_style_and_format(val):
-        if pd.isna(val):
-            return ""
-        try:
-            if isinstance(val, str):
-                if val in ["N/A", ""]:
-                    return ""
-                v = float(val.replace("%", ""))
-            else:
-                v = float(val)
-                
-            # 포맷팅
-            formatted = f"{v:.2f}%"
-            
-            # 색상
-            if v > 0:
-                return f"color: red; content: '{formatted}'"
-            elif v < 0:
-                return f"color: blue; content: '{formatted}'"
-            else:
-                return f"content: '{formatted}'"
-        except:
-            return ""
+    """테이블 스타일링 - 색상과 포맷팅 적용"""
+    styled = df.style
+    
+    # 각 퍼센트 컬럼에 대해 포맷팅과 색상을 적용
+    for col in perf_cols:
+        if col in df.columns:
+            styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
+    
+    return styled
+
     
     # 각 퍼센트 컬럼에 대해 포맷팅과 색상을 동시에 적용
     styled = df.style
@@ -751,7 +728,9 @@ def show_sentiment_analysis():
 
 
 def show_all_performance_tables():    
-    perf_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
+    # 컬럼명에 (%) 추가
+    perf_cols = ['1D (%)','1W (%)','MTD (%)','1M (%)','3M (%)','6M (%)','YTD (%)','1Y (%)','3Y (%)']
+    original_cols = ['1D','1W','MTD','1M','3M','6M','YTD','1Y','3Y']
     
     # 1. 주식시장
     st.subheader("📊 주식시장")
@@ -759,8 +738,14 @@ def show_all_performance_tables():
         stock_perf = get_perf_table_improved(STOCK_ETFS)
     
     if not stock_perf.empty:
+        # 컬럼명 변경
+        display_df = stock_perf.copy()
+        for i, old_col in enumerate(original_cols):
+            if old_col in display_df.columns:
+                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        
         st.dataframe(
-            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=490
         )
     else:
@@ -772,8 +757,13 @@ def show_all_performance_tables():
         bond_perf = get_perf_table_improved(BOND_ETFS)
     
     if not bond_perf.empty:
+        display_df = bond_perf.copy()
+        for i, old_col in enumerate(original_cols):
+            if old_col in display_df.columns:
+                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        
         st.dataframe(
-            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -785,8 +775,13 @@ def show_all_performance_tables():
         curr_perf = get_perf_table_improved(CURRENCY)
     
     if not curr_perf.empty:
+        display_df = curr_perf.copy()
+        for i, old_col in enumerate(original_cols):
+            if old_col in display_df.columns:
+                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        
         st.dataframe(
-            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=315
         )
     else:
@@ -798,8 +793,13 @@ def show_all_performance_tables():
         crypto_perf = get_perf_table_improved(CRYPTO)
     
     if not crypto_perf.empty:
+        display_df = crypto_perf.copy()
+        for i, old_col in enumerate(original_cols):
+            if old_col in display_df.columns:
+                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        
         st.dataframe(
-            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=385
         )
     else:
@@ -811,8 +811,13 @@ def show_all_performance_tables():
         style_perf = get_perf_table_improved(STYLE_ETFS)
     
     if not style_perf.empty:
+        display_df = style_perf.copy()
+        for i, old_col in enumerate(original_cols):
+            if old_col in display_df.columns:
+                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        
         st.dataframe(
-            style_perf_table(style_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=245
         )
     else:
@@ -824,13 +829,19 @@ def show_all_performance_tables():
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
     if not sector_perf.empty:
+        display_df = sector_perf.copy()
+        for i, old_col in enumerate(original_cols):
+            if old_col in display_df.columns:
+                display_df = display_df.rename(columns={old_col: perf_cols[i]})
+        
         st.dataframe(
-            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
+            style_perf_table(display_df.set_index('자산명'), perf_cols),
             use_container_width=True, height=420
         )
     else:
         st.error("섹터 ETF 성과 데이터를 계산할 수 없습니다.")
     
+    # 나머지 코드는 동일...
     st.markdown("---")
     col1, col2 = st.columns([3, 2])
     
