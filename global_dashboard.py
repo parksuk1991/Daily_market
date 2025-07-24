@@ -8,7 +8,7 @@ import plotly.express as px
 import requests
 from PIL import Image
 from io import BytesIO
-from yahooquery import Ticker  # 추가
+from yahooquery import Ticker
 import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 nltk.download('vader_lexicon')
@@ -274,7 +274,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     # 결과 DataFrame 생성
     df_result = pd.DataFrame(results)
     
-    # 현재값 포맷팅
+    # 현재값 포맷팅 (소수점 둘째 자리까지)
     if '현재값' in df_result.columns:
         df_result['현재값'] = df_result['현재값'].apply(
             lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A"
@@ -408,8 +408,6 @@ def get_perf_table_precise(label2ticker, ref_date=None):
         results.append(row)
 
     df_r = pd.DataFrame(results)
-    #for col in ['1D', '1W', 'MTD', '1M', '3M', '6M', 'YTD', '1Y', '3Y']:
-    #    df_r[col] = df_r[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else "")
     df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
     return df_r
 
@@ -456,62 +454,49 @@ def get_news_for_ticker(ticker_symbol, limit=1):
             result.append({'ticker': ticker_symbol, 'date': date, 'title': title})
     return result
 
-def colorize_return(val):
-    """값에 따른 색상 지정"""
-    if pd.isna(val):
-        return ""
-    
-    try:
-        # 숫자인 경우 직접 사용
-        if isinstance(val, (int, float)):
-            v = float(val)
-        elif isinstance(val, str):
-            if val in ["N/A", "", "nan"]:
-                return ""
-            # 문자열에서 숫자 추출
-            clean_val = str(val).replace('%', '').replace(' ', '').replace(',', '')
-            if not clean_val or clean_val == '-':
-                return ""
-            v = float(clean_val)
-        else:
-            return ""
-    except (ValueError, AttributeError, TypeError):
-        return ""
-    
-    # 색상 결정
-    if v > 0:
-        return "color: red;"
-    elif v < 0:
-        return "color: blue;"
-    else:
-        return ""
-
 def style_perf_table(df, perf_cols):
-    """테이블 스타일링 - 가장 확실한 버전"""
+    """테이블 스타일링 - 소수점 둘째 자리 표시 및 양수 빨간색, 음수 파란색"""
     
-    def format_value(val):
+    def format_and_color_value(val):
+        if pd.isna(val) or not isinstance(val, (int, float)):
+            return "N/A" # HTML 형식 문자열로 반환
+        
+        formatted_val = f"{val:.2f}%" # 소수점 둘째 자리까지 표시하고 % 추가
+        
+        if val > 0:
+            return f"<span style='color: red;'>{formatted_val}</span>"
+        elif val < 0:
+            return f"<span style='color: blue;'>{formatted_val}</span>"
+        else:
+            return formatted_val
+    
+    # '현재값' 컬럼은 %가 아니므로 별도로 포맷팅
+    def format_current_value(val):
         if pd.isna(val) or not isinstance(val, (int, float)):
             return "N/A"
-        return f"{val:.2f}"
+        return f"{val:,.2f}" # 천 단위 구분 기호와 소수점 둘째 자리까지
     
-    def get_color(val):
-        if pd.isna(val) or not isinstance(val, (int, float)):
-            return ""
-        if val > 0:
-            return "color: red"
-        elif val < 0:
-            return "color: blue"
-        return ""
+    # 새로운 DataFrame을 생성하여 스타일링된 문자열을 저장
+    styled_df = df.copy()
     
-    # 먼저 포맷팅
-    styled = df.style.format({col: format_value for col in perf_cols if col in df.columns})
-    
-    # 그 다음 색상 (원본 값 기준)
+    # '현재값' 컬럼 처리
+    if '현재값' in styled_df.columns:
+        styled_df['현재값'] = styled_df['현재값'].apply(format_current_value)
+
+    # 성과 컬럼 처리
     for col in perf_cols:
-        if col in df.columns:
-            styled = styled.applymap(get_color, subset=[col])
-    
-    return styled
+        original_col_name = col.replace(' (%)', '') # 원본 컬럼명 사용
+        if original_col_name in df.columns: # 원본 df에 해당 컬럼이 있는지 확인
+            styled_df[col] = df[original_col_name].apply(format_and_color_value)
+        else:
+            # 원본 df에 해당 컬럼이 없는 경우, N/A로 채우거나 다른 처리
+            styled_df[col] = "N/A"
+            
+    # 원본 df의 인덱스를 유지
+    styled_df = styled_df.set_index('자산명')
+            
+    return styled_df.to_html(escape=False) # HTML로 렌더링하도록 변경
+
 
 # 감정 분류
 def classify_sentiment(score):
@@ -735,15 +720,10 @@ def show_all_performance_tables():
         stock_perf = get_perf_table_improved(STOCK_ETFS)
     
     if not stock_perf.empty:
-        # 컬럼명 변경
-        display_df = stock_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
-        
-        st.dataframe(
-            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=490
+        # style_perf_table 함수에 원본 컬럼명과 함께 전달
+        st.markdown(
+            style_perf_table(stock_perf, original_cols), # original_cols 전달
+            unsafe_allow_html=True
         )
     else:
         st.error("주식시장 성과 데이터를 계산할 수 없습니다.")
@@ -754,14 +734,9 @@ def show_all_performance_tables():
         bond_perf = get_perf_table_improved(BOND_ETFS)
     
     if not bond_perf.empty:
-        display_df = bond_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
-        
-        st.dataframe(
-            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=385
+        st.markdown(
+            style_perf_table(bond_perf, original_cols), # original_cols 전달
+            unsafe_allow_html=True
         )
     else:
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
@@ -772,14 +747,9 @@ def show_all_performance_tables():
         curr_perf = get_perf_table_improved(CURRENCY)
     
     if not curr_perf.empty:
-        display_df = curr_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
-        
-        st.dataframe(
-            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=315
+        st.markdown(
+            style_perf_table(curr_perf, original_cols), # original_cols 전달
+            unsafe_allow_html=True
         )
     else:
         st.error("통화 성과 데이터를 계산할 수 없습니다.")
@@ -790,14 +760,9 @@ def show_all_performance_tables():
         crypto_perf = get_perf_table_improved(CRYPTO)
     
     if not crypto_perf.empty:
-        display_df = crypto_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
-        
-        st.dataframe(
-            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=385
+        st.markdown(
+            style_perf_table(crypto_perf, original_cols), # original_cols 전달
+            unsafe_allow_html=True
         )
     else:
         st.error("암호화폐 성과 데이터를 계산할 수 없습니다.")
@@ -808,14 +773,9 @@ def show_all_performance_tables():
         style_perf = get_perf_table_improved(STYLE_ETFS)
     
     if not style_perf.empty:
-        display_df = style_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
-        
-        st.dataframe(
-            style_perf_table(style_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=245
+        st.markdown(
+            style_perf_table(style_perf, original_cols), # original_cols 전달
+            unsafe_allow_html=True
         )
     else:
         st.error("스타일 ETF 성과 데이터를 계산할 수 없습니다.")
@@ -826,14 +786,9 @@ def show_all_performance_tables():
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     
     if not sector_perf.empty:
-        display_df = sector_perf.copy()
-        for i, old_col in enumerate(original_cols):
-            if old_col in display_df.columns:
-                display_df = display_df.rename(columns={old_col: perf_cols[i]})
-        
-        st.dataframe(
-            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=420
+        st.markdown(
+            style_perf_table(sector_perf, original_cols), # original_cols 전달
+            unsafe_allow_html=True
         )
     else:
         st.error("섹터 ETF 성과 데이터를 계산할 수 없습니다.")
