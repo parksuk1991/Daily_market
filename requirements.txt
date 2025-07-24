@@ -8,3 +8,4 @@ yahooquery
 vaderSentiment
 scipy
 nltk
+matplotlib
