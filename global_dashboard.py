@@ -35,7 +35,7 @@ with col_img_credit:
         response = requests.get(image_url, timeout=5)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        st.image(img, width=130, caption=None)
+        st.image(img, width=140, caption=None)
     except Exception:
         st.info("이미지를 불러올 수 없습니다.")
     #st.markdown(
