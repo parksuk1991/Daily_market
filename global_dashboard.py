@@ -593,7 +593,8 @@ def show_sentiment_analysis():
     st.subheader("👨‍💼🔝 주요 종목 애널리스트 의견")
     st.caption("• 애널리스트 등급 점수: 1 = Strong Buy,  2 = Buy,  3 = Neutral,  4 = Sell,  5 = Strong Sell")
     st.caption("• 애널리스트 목표가: 최근 3~6개월 내의 애널리스트 리포트에서 제시된 목표가(Price Target)의 평균")
-    analyst_df = get_analyst_report_data(ticker_syms)
+    with st.spinner("애널리스트 등급 데이터 로딩 중..."):
+        analyst_df = get_analyst_report_data(ticker_syms)
     analyst_df_sorted = analyst_df.sort_values('상승여력', ascending=False, na_position='last')
     st.dataframe(
         analyst_df_sorted.style.format({
@@ -606,7 +607,8 @@ def show_sentiment_analysis():
     )
     st.subheader("🔍 주요 종목 밸류에이션 및 주당순이익 추이")
     st.caption("• 현재 = Trailing 12M,  선행 = Blended Forward 12M")
-    valuation_df = get_valuation_eps_table(ticker_syms)
+    with st.spinner("밸류에이션 및 EPS 데이터 로딩 중..."):
+        valuation_df = get_valuation_eps_table(ticker_syms)
     valuation_df_sorted = valuation_df.sort_values('EPS 상승률', ascending=False, na_position='last')
     st.dataframe(
         valuation_df_sorted.style.format({
