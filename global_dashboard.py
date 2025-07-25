@@ -21,40 +21,6 @@ except ImportError:
     st.error("lxml 패키지가 필요합니다. requirements.txt에 lxml을 추가하세요.")
 
 
-import streamlit as st
-import time
-
-# 썸네일/미리보기용 초기 화면 및 진입 버튼
-def show_landing_page():
-    st.markdown(
-        """
-        <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 65vh;'>
-            <img src="https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg"
-                 width="180" style="margin-bottom:20px;" />
-            <h2 style='color:#2B2B2B;'>🌐 Global Market Monitoring</h2>
-            <p style='font-size:1.2rem; color:#888; margin-bottom: 32px;'>
-                <b>Made by parksuk1991</b><br>
-                <span style='font-size:0.95rem;'>앱에 입장하려면 아래 버튼을 클릭하세요.</span>
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# session_state를 사용하여 최초 접속 시에는 대기/입장 화면만 보여줌
-if "entered_app" not in st.session_state:
-    st.session_state.entered_app = False
-
-if not st.session_state.entered_app:
-    # 실제로는 아래 방식이 더 자연스럽고 간단함
-    if st.button("Enter App 🚀", key="enter_app_button", use_container_width=True):
-        st.session_state.entered_app = True
-    else:
-        show_landing_page()
-        st.stop()
-
-
-
 st.set_page_config(
     page_title="Global Market Monitoring",
     page_icon="🌐",
