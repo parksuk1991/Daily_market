@@ -34,13 +34,8 @@ def show_landing_page():
             <h2 style='color:#2B2B2B;'>🌐 Global Market Monitoring</h2>
             <p style='font-size:1.2rem; color:#888; margin-bottom: 32px;'>
                 <b>Made by parksuk1991</b><br>
-                <span style='font-size:0.95rem;'>대시보드에 입장하려면 아래 버튼을 클릭하세요.</span>
+                <span style='font-size:0.95rem;'>앱에 입장하려면 아래 버튼을 클릭하세요.</span>
             </p>
-            <form action="" method="post">
-                <button type="submit" name="enter_app" style="background:#2B2B2B; color:white; font-size:1.1rem; border:none; border-radius:8px; padding:12px 28px; cursor:pointer;">
-                    Enter App 🚀
-                </button>
-            </form>
         </div>
         """,
         unsafe_allow_html=True,
@@ -51,9 +46,6 @@ if "entered_app" not in st.session_state:
     st.session_state.entered_app = False
 
 if not st.session_state.entered_app:
-    # 버튼 클릭시 세션 상태 변경
-    if st.form("landing_form"):  # 이 부분은 form 사용시 필요, 아니면 아래처럼 처리
-        st.session_state.entered_app = True
     # 실제로는 아래 방식이 더 자연스럽고 간단함
     if st.button("Enter App 🚀", key="enter_app_button", use_container_width=True):
         st.session_state.entered_app = True
