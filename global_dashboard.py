@@ -43,7 +43,6 @@ def show_safe_thumbnail_landing():
         unsafe_allow_html=True,
     )
 
-# 세션 상태로 진입여부 체크
 if "entered_app" not in st.session_state:
     st.session_state.entered_app = False
 
@@ -51,7 +50,8 @@ if not st.session_state.entered_app:
     show_safe_thumbnail_landing()
     if st.button("Enter App 🚀", key="enter_app_button", use_container_width=True):
         st.session_state.entered_app = True
-        st.experimental_rerun()
+        # st.experimental_rerun()  # 이 부분 삭제!
+        st.write("버튼을 눌렀습니다. 화면을 새로고침(F5) 해주세요.")  # 안내 문구 추가
     st.stop()
 
 
