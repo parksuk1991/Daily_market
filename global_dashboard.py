@@ -644,7 +644,7 @@ def show_all_performance_tables():
         )
     else:
         st.error("채권시장 성과 데이터를 계산할 수 없습니다.")
-    st.subheader("💹 통화")
+    st.subheader("💱 통화")
     with st.spinner("통화 성과 데이터 계산 중..."):
         curr_perf = get_perf_table_improved(CURRENCY)
     if not curr_perf.empty:
