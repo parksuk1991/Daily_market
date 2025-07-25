@@ -49,7 +49,6 @@ if not st.session_state.entered_app:
     # 실제로는 아래 방식이 더 자연스럽고 간단함
     if st.button("Enter App 🚀", key="enter_app_button", use_container_width=True):
         st.session_state.entered_app = True
-        st.experimental_rerun()
     else:
         show_landing_page()
         st.stop()
