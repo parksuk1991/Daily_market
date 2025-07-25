@@ -19,53 +19,6 @@ try:
 except ImportError:
     st.error("lxml 패키지가 필요합니다. requirements.txt에 lxml을 추가하세요.")
 
-import streamlit as st
-
-# 썸네일/미리보기용 안전한 첫화면
-def show_safe_thumbnail_landing():
-    st.set_page_config(
-        page_title="Global Market Monitoring",
-        page_icon="🌐",
-        layout="wide"
-    )
-    st.markdown(
-        """
-        <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh;'>
-            <img src="https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg"
-                 width="160" style="margin-bottom:20px; border-radius:10px;" />
-            <h2 style='color:#222;'>🌐 Global Market Monitoring</h2>
-            <p style='font-size:1.2rem; color:#888; margin-bottom: 32px;'>
-                <b>Made by parksuk1991</b><br>
-                <span style='font-size:0.95rem;'>대시보드에 입장하려면 아래 버튼을 클릭하세요.</span>
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-if "entered_app" not in st.session_state:
-    st.session_state.entered_app = False
-
-if not st.session_state.entered_app:
-    show_safe_thumbnail_landing()
-    if st.button("Enter App 🚀", key="enter_app_button", use_container_width=True):
-        st.session_state.entered_app = True
-        # st.experimental_rerun()  # 이 부분 삭제!
-        st.write("버튼을 눌렀습니다. 화면을 새로고침(F5) 해주세요.")  # 안내 문구 추가
-    st.stop()
-
-
-
-
-
-
-
-
-
-
-
-
-
 st.set_page_config(
     page_title="Global Market Monitoring",
     page_icon="🌐",
