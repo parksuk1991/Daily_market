@@ -510,7 +510,7 @@ def get_analyst_report_data(ticker_syms):
                 '상승여력': None
             })
     df = pd.DataFrame(rows)
-    df = df[['Ticker', '종목명', '애널리스트 등급 점수', '애널리스트 의견', '애널리스트 목표가', '현재가', '상승여력']]
+    df = df[['Ticker', '종목명', '애널리스트 등급 점수', '애널리스트 등급', '애널리스트 목표가', '현재가', '상승여력']]
     return df
 
 def get_valuation_eps_table(ticker_syms):
