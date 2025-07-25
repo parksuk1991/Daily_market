@@ -494,7 +494,7 @@ def get_analyst_report_data(ticker_syms):
                 'Ticker': sym,
                 '종목명': name,
                 '애널리스트 등급 점수': info.get('recommendationMean'),
-                '애널리스트 의견': info.get('recommendationKey'),
+                '애널리스트 등급': info.get('recommendationKey'),
                 '애널리스트 목표가': target_price,
                 '현재가': current_price,
                 '상승여력': upside
@@ -504,7 +504,7 @@ def get_analyst_report_data(ticker_syms):
                 'Ticker': sym,
                 '종목명': '',
                 '애널리스트 등급 점수': None,
-                '애널리스트 의견': None,
+                '애널리스트 등급': None,
                 '애널리스트 목표가(평균)': None,
                 '현재가': None,
                 '상승여력': None
@@ -591,8 +591,8 @@ def show_sentiment_analysis():
 
     st.markdown("---")
     # 애널리스트 리포트 요약 한 번만 출력
-    st.subheader("🧑‍💼 주요 종목 애널리스트 리포트 요약")
-    st.caption("• 애널리스트 등급 점수: 1=Strong Buy, 2=Buy, 3=Neutral, 4=Sell, 5=Strong Sell")
+    st.subheader("🧑‍💼 주요 종목 애널리스트 의견")
+    st.caption("• 애널리스트 등급 점수: 1 = Strong Buy,  2 = Buy,  3 = Neutral,  4 = Sell,  5 = Strong Sell")
     st.caption("• 애널리스트 목표가: 최근 3~6개월 내의 애널리스트 리포트에서 제시된 목표가(Price Target)의 평균")
     analyst_df = get_analyst_report_data(ticker_syms)
     st.dataframe(
@@ -601,12 +601,12 @@ def show_sentiment_analysis():
             '애널리스트 목표가': '{:,.2f}',
             '현재가': '{:,.2f}',
             '상승여력': '{:.1f}%'
-        }).background_gradient(subset=['상승여력'], cmap='twilight'),
+        }).background_gradient(subset=['상승여력'], cmap='Pastel1'),
         use_container_width=True, height=min(900, 30 + 30*len(analyst_df))
     )
     # 밸류에이션 및 EPS 추이 한 번만 출력
     st.subheader("📊 주요 종목 밸류에이션 및 주당순이익 추이")
-    st.caption("• 현재=Trailing 12M, 선행=Blended Forward 12M")
+    st.caption("• 현재 = Trailing 12M,  선행 = Blended Forward 12M")
     valuation_df = get_valuation_eps_table(ticker_syms)
     st.dataframe(
         valuation_df.style.format({
@@ -615,7 +615,7 @@ def show_sentiment_analysis():
             '현재 EPS': '{:.2f}',
             '선행 EPS': '{:.2f}',
             'EPS 상승률': '{:.1f}%'
-        }).background_gradient(subset=['EPS 상승률'], cmap='twilight'),
+        }).background_gradient(subset=['EPS 상승률'], cmap='Pastel1'),
         use_container_width=True, height=min(900, 30 + 30*len(valuation_df))
     )
 
