@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 # -------------------- 상단 레이아웃 + 업데이트 버튼 ---------------------
-col_title, col_img_credit = st.columns([7, 1])
+col_title, col_img_credit = st.columns([8, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
     update_clicked = st.button("Update", type="primary", use_container_width=False, key="main_update_btn")
@@ -677,14 +677,20 @@ period_options = {
     "36개월": 36,
 }
 
-def render_normalized_chart(title, etf_dict, key):
+def render_normalized_chart(title, etf_dict, key, default_val):
     st.subheader(f"{title}")
+    # 각 차트별 기간 selectbox는 st.session_state에 값을 저장
+    if f"{key}_months" not in st.session_state:
+        st.session_state[f"{key}_months"] = default_val
     months = st.selectbox(
-        "기간 선택", options=list(period_options.keys()), index=1, key=key
+        "기간 선택", options=list(period_options.keys()),
+        index=list(period_options.values()).index(st.session_state[f"{key}_months"]),
+        key=f"{key}_selectbox"
     )
     months_val = period_options[months]
-    # 버튼이 눌린 경우에만 데이터 새로고침
-    if st.session_state.get("update_btn_last_clicked") == st.session_state.get("main_update_btn"):
+    st.session_state[f"{key}_months"] = months_val
+    # Update 버튼을 눌렀으면, 차트 기간을 바꿀 때마다 바로 데이터를 다시 그림
+    if st.session_state.get('updated', False):
         norm_df = get_normalized_prices(etf_dict, months=months_val)
         fig = go.Figure()
         for col in norm_df.columns:
@@ -697,13 +703,16 @@ def render_normalized_chart(title, etf_dict, key):
     else:
         st.info("차트 갱신을 위해 상단 'Update' 버튼을 눌러주세요.")
 
+# --------- Update 버튼 클릭시 세션에 기록, 아니면 안내만 표시 ---------
 if update_clicked:
-    st.session_state["update_btn_last_clicked"] = st.session_state["main_update_btn"]
+    st.session_state['updated'] = True
+
+if st.session_state.get('updated', False):
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
-    render_normalized_chart("✅ 주요 주가지수 수익률", STOCK_ETFS, "idx_months")
-    render_normalized_chart("☑️ 섹터 ETF 수익률", SECTOR_ETFS, "sector_months")
-    render_normalized_chart("☑️ 스타일 ETF 수익률", STYLE_ETFS, "style_months")
+    render_normalized_chart("✅ 주요 주가지수 수익률", STOCK_ETFS, "idx", 6)
+    render_normalized_chart("☑️ 섹터 ETF 수익률", SECTOR_ETFS, "sector", 6)
+    render_normalized_chart("☑️ 스타일 ETF 수익률", STYLE_ETFS, "style", 6)
     st.subheader("📰 섹터별 주요 종목 헤드라인")
     for label, etf in SECTOR_ETFS.items():
         top_holdings = get_top_holdings(etf, n=3)
