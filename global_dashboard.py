@@ -56,10 +56,10 @@ with st.sidebar:
     st.markdown("### ⚙️ 대시보드 설정")
     st.markdown("""
         <div style="font-size:1rem;font-weight:600;">
-            차트 수익률 기간 설정
+            차트 누적 수익률 기간 설정
         </div>
         <div style="font-size:0.8rem; color:#888; line-height:1.2; margin-bottom:-10px;">
-            (N개월, 모든 차트에 동일 적용)
+            (누적 N개월, 모든 차트에 동일 적용)
         </div>
     """, unsafe_allow_html=True)
     normalized_months = st.slider(
