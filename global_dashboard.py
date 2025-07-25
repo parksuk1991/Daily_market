@@ -64,7 +64,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     normalized_months = st.slider(
         "",  # 제목은 위에서 렌더링
-        3, 36, 12,
+        3, 36, 6,
         help="모든 차트에 적용될 정규화 수익률 기간을 의미",
         key="norm_months_slider"
     )
