@@ -39,7 +39,7 @@ with col_img_credit:
     except Exception:
         st.info("이미지를 불러올 수 없습니다.")
     st.markdown(
-        #"<div style='margin-top: -1px; text-align:center;'>"
+        "<div style='margin-top: -1px; text-align:center;'>"
         #"<span style='font-size:0.9rem; color:#888;'>Made by parksuk1991</span>"
         #"</div>",
         unsafe_allow_html=True
