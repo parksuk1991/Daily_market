@@ -46,7 +46,7 @@ with col_img_credit:
     #)
     
     st.markdown(
-        '<div style="text-align: center; margin-bottom: 3px; font-size:0.8rem;">'
+        '<div style="text-align: left; margin-bottom: 3px; font-size:0.9rem;">'
         'Data 출처: <a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a>'
         '</div>',
         unsafe_allow_html=True
