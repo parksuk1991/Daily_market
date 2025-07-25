@@ -603,7 +603,7 @@ def show_sentiment_analysis():
             '애널리스트 목표가': '{:,.2f}',
             '현재가': '{:,.2f}',
             '상승여력': '{:.1f}%'
-        }).background_gradient(subset=['상승여력'], cmap='coolwarm'),
+        }).background_gradient(subset=['상승여력'], cmap='Set3'),
         use_container_width=True, height=min(900, 30 + 30*len(analyst_df))
     )
     # 밸류에이션 및 EPS 추이 한 번만 출력
@@ -618,7 +618,7 @@ def show_sentiment_analysis():
             '현재 EPS': '{:.2f}',
             '선행 EPS': '{:.2f}',
             'EPS 상승률': '{:.1f}%'
-        }).background_gradient(subset=['EPS 상승률'], cmap='coolwarm'),
+        }).background_gradient(subset=['EPS 상승률'], cmap='Set3'),
         use_container_width=True, height=min(900, 30 + 30*len(valuation_df))
     )
 
