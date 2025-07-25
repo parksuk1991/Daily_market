@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 # -------------------- 상단 레이아웃 + 업데이트 버튼 ---------------------
-col_title, col_img_credit = st.columns([8, 1])
+col_title, col_img_credit = st.columns([9, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
     update_clicked = st.button("Update", type="primary", use_container_width=False, key="main_update_btn")
@@ -679,7 +679,6 @@ period_options = {
 
 def render_normalized_chart(title, etf_dict, key, default_val):
     st.subheader(f"{title}")
-    # 각 차트별 기간 selectbox는 st.session_state에 값을 저장
     if f"{key}_months" not in st.session_state:
         st.session_state[f"{key}_months"] = default_val
     months = st.selectbox(
@@ -689,7 +688,6 @@ def render_normalized_chart(title, etf_dict, key, default_val):
     )
     months_val = period_options[months]
     st.session_state[f"{key}_months"] = months_val
-    # Update 버튼을 눌렀으면, 차트 기간을 바꿀 때마다 바로 데이터를 다시 그림
     if st.session_state.get('updated', False):
         norm_df = get_normalized_prices(etf_dict, months=months_val)
         fig = go.Figure()
@@ -703,7 +701,6 @@ def render_normalized_chart(title, etf_dict, key, default_val):
     else:
         st.info("차트 갱신을 위해 상단 'Update' 버튼을 눌러주세요.")
 
-# --------- Update 버튼 클릭시 세션에 기록, 아니면 안내만 표시 ---------
 if update_clicked:
     st.session_state['updated'] = True
 
@@ -733,4 +730,4 @@ if st.session_state.get('updated', False):
     st.markdown("---")
     show_sentiment_analysis()
 else:
-    st.info("업데이트를 위해 상단 'Update' 버튼을 눌러주세요.")
+    st.info("상단 'Update' 버튼을 눌러주세요.")
