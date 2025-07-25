@@ -38,46 +38,10 @@ with col_img_credit:
         st.image(img, width=150, caption=None)
     except Exception:
         st.info("이미지를 불러올 수 없습니다.")
-    #st.markdown(
-    #    "<div style='margin-top: -1px; text-align:center;'>"
-        #"<span style='font-size:0.9rem; color:#888;'>Made by parksuk1991</span>"
-    #    "</div>",
-    #    unsafe_allow_html=True
-    #)
-    
     st.markdown(
         '<div style="text-align: left; margin-bottom: 3px; font-size:0.9rem;">'
         'Data 출처: <a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a>'
         '</div>',
-        unsafe_allow_html=True
-    )
-
-# ===================== UI (사이드바로 이동) =====================
-with st.sidebar:
-    st.markdown("### ⚙️ 대시보드 설정")
-    st.markdown("""
-        <div style="font-size:1rem;font-weight:600;">
-            차트 누적 수익률 기간 설정
-        </div>
-        <div style="font-size:0.8rem; color:#888; line-height:1.2; margin-bottom:-10px;">
-            (누적 N개월, 모든 차트에 동일 적용)
-        </div>
-    """, unsafe_allow_html=True)
-    normalized_months = st.slider(
-        "",  # 제목은 위에서 렌더링
-        3, 36, 6,
-        help="모든 차트에 적용될 정규화 수익률 기간을 의미",
-        key="norm_months_slider"
-    )
-    update_clicked = st.button("Update", type="primary", use_container_width=True)
-    st.markdown(
-        """
-        <div style='text-align:center; margin-top:20px;'>
-            <span style='font-size:0.85rem; color:#d9534f; font-weight:500;'>
-                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼 Click!
-            </span>
-        </div>
-        """,
         unsafe_allow_html=True
     )
 
@@ -272,6 +236,7 @@ def get_sample_calculation_dates(label2ticker, ref_date=None):
     except Exception:
         return None, None, None
 
+@st.cache_data(show_spinner="차트 데이터 로딩 중...")
 def get_normalized_prices(label2ticker, months=6):
     tickers = list(label2ticker.values())
     end = datetime.now().date()
@@ -703,55 +668,55 @@ def show_all_performance_tables():
             else:
                 st.caption("샘플 데이터를 불러올 수 없습니다.")
 
-if update_clicked:
-    st.markdown("<br>", unsafe_allow_html=True)
-    show_all_performance_tables()
-    st.subheader(f"✅ 주요 주가지수 수익률 (최근 {normalized_months}개월)")
-    norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
-    fig1 = go.Figure()
-    for col in norm_idx.columns:
-        fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
-    fig1.update_layout(
+# -------------------- 차트 부분별 기간 선택 UI & 렌더링 --------------------
+st.markdown("<br>", unsafe_allow_html=True)
+show_all_performance_tables()
+
+# 각 차트별 기간 옵션
+period_options = {
+    "3개월": 3,
+    "6개월": 6,
+    "12개월": 12,
+    "24개월": 24,
+    "36개월": 36,
+}
+
+def render_normalized_chart(title, etf_dict, key):
+    st.subheader(f"{title}")
+    months = st.selectbox(
+        "기간 선택", options=list(period_options.keys()), index=1, key=key
+    )
+    months_val = period_options[months]
+    norm_df = get_normalized_prices(etf_dict, months=months_val)
+    fig = go.Figure()
+    for col in norm_df.columns:
+        fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
+    fig.update_layout(
         yaxis_title="100 기준 누적수익률(%)",
         template="plotly_dark", height=500, legend=dict(orientation='h')
     )
-    st.plotly_chart(fig1, use_container_width=True)
-    st.subheader(f"☑️ 섹터 ETF 수익률 (최근 {normalized_months}개월)")
-    norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
-    fig2 = go.Figure()
-    for col in norm_sector.columns:
-        fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
-    fig2.update_layout(
-        yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=500, legend=dict(orientation='h')
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-    st.subheader(f"☑️ 스타일 ETF 수익률 (최근 {normalized_months}개월)")
-    norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
-    fig3 = go.Figure()
-    for col in norm_style.columns:
-        fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
-    fig3.update_layout(
-        yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=500, legend=dict(orientation='h')
-    )
-    st.plotly_chart(fig3, use_container_width=True)
-    st.subheader("📰 섹터별 주요 종목 헤드라인")
-    for label, etf in SECTOR_ETFS.items():
-        top_holdings = get_top_holdings(etf, n=3)
-        if top_holdings:
-            sector_name = label.split()[0] + " 섹터"
-            holding_names = [name for _, name in top_holdings]
-            holding_syms = [sym for sym, _ in top_holdings]
-            st.write(f"#### {sector_name} 주요 종목: {', '.join(holding_names)}")
-            for sym, name in top_holdings:
-                news = get_news_for_ticker(sym, limit=1)
-                if news:
-                    art = news[0]
-                    st.markdown(f"- **[{sym}]** {art['date']}: {art['title']}")
-                else:
-                    st.write(f"- [{sym}] 뉴스 없음")
-        else:
-            st.write(f"- {label}: 보유종목 정보 없음")
-    st.markdown("---")
-    show_sentiment_analysis()
+    st.plotly_chart(fig, use_container_width=True)
+
+render_normalized_chart("✅ 주요 주가지수 수익률", STOCK_ETFS, "idx_months")
+render_normalized_chart("☑️ 섹터 ETF 수익률", SECTOR_ETFS, "sector_months")
+render_normalized_chart("☑️ 스타일 ETF 수익률", STYLE_ETFS, "style_months")
+
+st.subheader("📰 섹터별 주요 종목 헤드라인")
+for label, etf in SECTOR_ETFS.items():
+    top_holdings = get_top_holdings(etf, n=3)
+    if top_holdings:
+        sector_name = label.split()[0] + " 섹터"
+        holding_names = [name for _, name in top_holdings]
+        holding_syms = [sym for sym, _ in top_holdings]
+        st.write(f"#### {sector_name} 주요 종목: {', '.join(holding_names)}")
+        for sym, name in top_holdings:
+            news = get_news_for_ticker(sym, limit=1)
+            if news:
+                art = news[0]
+                st.markdown(f"- **[{sym}]** {art['date']}: {art['title']}")
+            else:
+                st.write(f"- [{sym}] 뉴스 없음")
+    else:
+        st.write(f"- {label}: 보유종목 정보 없음")
+st.markdown("---")
+show_sentiment_analysis()
