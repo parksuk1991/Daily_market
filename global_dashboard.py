@@ -38,12 +38,13 @@ with col_img_credit:
         st.image(img, width=110, caption=None)
     except Exception:
         st.info("이미지를 불러올 수 없습니다.")
-    st.markdown(
-        "<div style='margin-top: -1px; text-align:center;'>"
+    #st.markdown(
+    #    "<div style='margin-top: -1px; text-align:center;'>"
         #"<span style='font-size:0.9rem; color:#888;'>Made by parksuk1991</span>"
-        #"</div>",
-        unsafe_allow_html=True
-    )
+    #    "</div>",
+    #    unsafe_allow_html=True
+    #)
+    
     st.markdown(
         '<div style="text-align: center; margin-bottom: 5px;">'
         'Data 출처: <a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a>'
