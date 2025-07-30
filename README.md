@@ -4,7 +4,7 @@
 
 ## 주요 기능
 
-- **다양한 자산군 지원**
+- **자산유형**
   - 주식시장: S&P500, NASDAQ100, ACWI, VEA, VWO, VGK, MCHI, EWJ, EWY, INDA, EWU, EWZ, EWC
   - 채권시장: TLT, SHY, LQD, EMB, HYG, TIP, VCSH, BNDX, BND, SPTS
   - 통화: 달러인덱스, 달러-원, 유로-원, 달러-엔 등
