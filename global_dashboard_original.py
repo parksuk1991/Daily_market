@@ -25,58 +25,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# -------------------- 상단 레이아웃---------------------
-col_title, col_img_credit = st.columns([7, 1])
+# -------------------- 상단 레이아웃 + 업데이트 버튼 ---------------------
+col_title, col_img_credit = st.columns([9, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
+    update_clicked = st.button("Update", type="primary", use_container_width=False, key="main_update_btn")
 with col_img_credit:
     image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg"
     try:
         response = requests.get(image_url, timeout=5)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        st.image(img, width=180, caption=None)
+        st.image(img, width=150, caption=None)
     except Exception:
         st.info("이미지를 불러올 수 없습니다.")
     st.markdown(
-        "<div style='margin-top: -1px; text-align:center;'>"
-        "<span style='font-size:0.9rem; color:#888;'>Made by parksuk1991</span>"
-        "</div>",
-        unsafe_allow_html=True
-    )
-    st.markdown(
-        '<div style="text-align: center; margin-bottom: 6px;">'
+        '<div style="text-align: left; margin-bottom: 3px; font-size:0.9rem;">'
         'Data 출처: <a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a>'
         '</div>',
-        unsafe_allow_html=True
-    )
-
-# ===================== UI (사이드바로 이동) =====================
-with st.sidebar:
-    st.markdown("### ⚙️ 대시보드 설정")
-    st.markdown("""
-        <div style="font-size:1rem;font-weight:600;">
-            차트 수익률 기간 설정
-        </div>
-        <div style="font-size:0.8rem; color:#888; line-height:1.2; margin-bottom:-10px;">
-            (N개월, 모든 차트에 동일 적용)
-        </div>
-    """, unsafe_allow_html=True)
-    normalized_months = st.slider(
-        "",  # 제목은 위에서 렌더링
-        3, 36, 12,
-        help="모든 차트에 적용될 정규화 수익률 기간을 의미",
-        key="norm_months_slider"
-    )
-    update_clicked = st.button("Update", type="primary", use_container_width=True)
-    st.markdown(
-        """
-        <div style='text-align:center; margin-top:20px;'>
-            <span style='font-size:0.85rem; color:#d9534f; font-weight:500;'>
-                ⚠️ 위에서 차트 수익률 기간 설정 후<br>'Update' 버튼 Click!
-            </span>
-        </div>
-        """,
         unsafe_allow_html=True
     )
 
@@ -271,6 +237,7 @@ def get_sample_calculation_dates(label2ticker, ref_date=None):
     except Exception:
         return None, None, None
 
+@st.cache_data(show_spinner="차트 데이터 로딩 중...")
 def get_normalized_prices(label2ticker, months=6):
     tickers = list(label2ticker.values())
     end = datetime.now().date()
@@ -322,7 +289,6 @@ def format_percentage(val):
         return "N/A"
 
 def colorize_return(val):
-    """값에 따른 색상 지정 (Streamlit pandas Styler용)"""
     if pd.isna(val):
         return ""
     try:
@@ -593,7 +559,8 @@ def show_sentiment_analysis():
     st.subheader("👨‍💼🔝 주요 종목 애널리스트 의견")
     st.caption("• 애널리스트 등급 점수: 1 = Strong Buy,  2 = Buy,  3 = Neutral,  4 = Sell,  5 = Strong Sell")
     st.caption("• 애널리스트 목표가: 최근 3~6개월 내의 애널리스트 리포트에서 제시된 목표가(Price Target)의 평균")
-    analyst_df = get_analyst_report_data(ticker_syms)
+    with st.spinner("애널리스트 등급 데이터 로딩 중..."):
+        analyst_df = get_analyst_report_data(ticker_syms)
     analyst_df_sorted = analyst_df.sort_values('상승여력', ascending=False, na_position='last')
     st.dataframe(
         analyst_df_sorted.style.format({
@@ -606,7 +573,8 @@ def show_sentiment_analysis():
     )
     st.subheader("🔍 주요 종목 밸류에이션 및 주당순이익 추이")
     st.caption("• 현재 = Trailing 12M,  선행 = Blended Forward 12M")
-    valuation_df = get_valuation_eps_table(ticker_syms)
+    with st.spinner("밸류에이션 및 EPS 데이터 로딩 중..."):
+        valuation_df = get_valuation_eps_table(ticker_syms)
     valuation_df_sorted = valuation_df.sort_values('EPS 상승률', ascending=False, na_position='last')
     st.dataframe(
         valuation_df_sorted.style.format({
@@ -700,39 +668,48 @@ def show_all_performance_tables():
             else:
                 st.caption("샘플 데이터를 불러올 수 없습니다.")
 
+# -------------------- 차트 부분별 기간 선택 UI & 렌더링 --------------------
+period_options = {
+    "3개월": 3,
+    "6개월": 6,
+    "12개월": 12,
+    "24개월": 24,
+    "36개월": 36,
+}
+
+def render_normalized_chart(title, etf_dict, key, default_val):
+    st.subheader(f"{title}")
+    if f"{key}_months" not in st.session_state:
+        st.session_state[f"{key}_months"] = default_val
+    months = st.selectbox(
+        "기간 선택", options=list(period_options.keys()),
+        index=list(period_options.values()).index(st.session_state[f"{key}_months"]),
+        key=f"{key}_selectbox"
+    )
+    months_val = period_options[months]
+    st.session_state[f"{key}_months"] = months_val
+    if st.session_state.get('updated', False):
+        norm_df = get_normalized_prices(etf_dict, months=months_val)
+        fig = go.Figure()
+        for col in norm_df.columns:
+            fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
+        fig.update_layout(
+            yaxis_title="100 기준 누적수익률(%)",
+            template="plotly_dark", height=500, legend=dict(orientation='h')
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("차트 갱신을 위해 상단 'Update' 버튼을 눌러주세요.")
+
 if update_clicked:
+    st.session_state['updated'] = True
+
+if st.session_state.get('updated', False):
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
-    st.subheader(f"✅ 주요 주가지수 수익률 (최근 {normalized_months}개월)")
-    norm_idx = get_normalized_prices(STOCK_ETFS, months=normalized_months)
-    fig1 = go.Figure()
-    for col in norm_idx.columns:
-        fig1.add_trace(go.Scatter(x=norm_idx.index, y=norm_idx[col], mode='lines', name=col))
-    fig1.update_layout(
-        yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=500, legend=dict(orientation='h')
-    )
-    st.plotly_chart(fig1, use_container_width=True)
-    st.subheader(f"☑️ 섹터 ETF 수익률 (최근 {normalized_months}개월)")
-    norm_sector = get_normalized_prices(SECTOR_ETFS, months=normalized_months)
-    fig2 = go.Figure()
-    for col in norm_sector.columns:
-        fig2.add_trace(go.Scatter(x=norm_sector.index, y=norm_sector[col], mode='lines', name=col))
-    fig2.update_layout(
-        yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=500, legend=dict(orientation='h')
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-    st.subheader(f"☑️ 스타일 ETF 수익률 (최근 {normalized_months}개월)")
-    norm_style = get_normalized_prices(STYLE_ETFS, months=normalized_months)
-    fig3 = go.Figure()
-    for col in norm_style.columns:
-        fig3.add_trace(go.Scatter(x=norm_style.index, y=norm_style[col], mode='lines', name=col))
-    fig3.update_layout(
-        yaxis_title="100 기준 누적수익률(%)",
-        template="plotly_dark", height=500, legend=dict(orientation='h')
-    )
-    st.plotly_chart(fig3, use_container_width=True)
+    render_normalized_chart("✅ 주요 주가지수 수익률", STOCK_ETFS, "idx", 6)
+    render_normalized_chart("☑️ 섹터 ETF 수익률", SECTOR_ETFS, "sector", 6)
+    render_normalized_chart("☑️ 스타일 ETF 수익률", STYLE_ETFS, "style", 6)
     st.subheader("📰 섹터별 주요 종목 헤드라인")
     for label, etf in SECTOR_ETFS.items():
         top_holdings = get_top_holdings(etf, n=3)
@@ -752,3 +729,5 @@ if update_clicked:
             st.write(f"- {label}: 보유종목 정보 없음")
     st.markdown("---")
     show_sentiment_analysis()
+else:
+    st.info("상단 'Update' 버튼을 눌러주세요.")
