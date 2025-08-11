@@ -10,6 +10,7 @@ from PIL import Image
 from io import BytesIO
 from yahooquery import Ticker
 import matplotlib.pyplot as plt
+import torch
 
 # =================== 추가: LLM & 뉴스 관련 패키지 ===================
 import warnings
@@ -306,8 +307,10 @@ def style_perf_table(df, perf_cols):
 # =================== LLM 기반 뉴스/감정/번역 함수 ===================
 @st.cache_resource
 def get_hf_pipelines():
-    summarizer = pipeline("summarization", model="facebook/bart-large-xsum")
-    sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+    # device 선택 (GPU 있으면 0, 없으면 -1)
+    device = 0 if torch.cuda.is_available() else -1
+    summarizer = pipeline("summarization", model="facebook/bart-large-xsum", device=device)
+    sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english", device=device)
     return summarizer, sentiment_analyzer
 
 def translate_to_korean(text):
