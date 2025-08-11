@@ -9,19 +9,11 @@ import requests
 from PIL import Image
 from io import BytesIO
 from yahooquery import Ticker
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import matplotlib.pyplot as plt
-import torch
+nltk.download('vader_lexicon')
 
-# =================== 추가: LLM & 뉴스 관련 패키지 ===================
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
-
-from transformers import pipeline, logging as hf_logging
-hf_logging.set_verbosity_error()
-from GoogleNews import GoogleNews
-from deep_translator import GoogleTranslator
-
-# =================== Streamlit 페이지 세팅 ===================
 try:
     import lxml
 except ImportError:
@@ -33,6 +25,7 @@ st.set_page_config(
     layout="wide"
 )
 
+# -------------------- 상단 레이아웃 + 업데이트 버튼 ---------------------
 col_title, col_img_credit = st.columns([9, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
@@ -53,7 +46,7 @@ with col_img_credit:
         unsafe_allow_html=True
     )
 
-# =================== 자산 정의 ===================
+# =========== 자산 정의 ================
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY',
     'NASDAQ 100 (QQQ)': 'QQQ',
@@ -125,7 +118,7 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
-# =================== 데이터/차트 함수 ===================
+# ---- 주요 데이터 함수----
 def get_perf_table_improved(label2ticker, ref_date=None):
     tickers = list(label2ticker.values())
     labels = list(label2ticker.keys())
@@ -271,6 +264,21 @@ def get_top_holdings(etf_ticker, n=3):
     except Exception:
         return []
 
+def get_news_for_ticker(ticker_symbol, limit=1):
+    y = yf.Ticker(ticker_symbol)
+    try:
+        news = y.news if hasattr(y, 'news') else y.get_news()
+    except Exception:
+        news = []
+    result = []
+    for art in news[:limit]:
+        title = art.get('title') or art.get('content', {}).get('title')
+        ts = art.get('providerPublishTime')
+        date = datetime.fromtimestamp(ts).strftime('%Y-%m-%d') if isinstance(ts, int) else ''
+        if title:
+            result.append({'ticker': ticker_symbol, 'date': date, 'title': title})
+    return result
+
 def format_percentage(val):
     if pd.isna(val):
         return "N/A"
@@ -304,118 +312,6 @@ def style_perf_table(df, perf_cols):
             styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
     return styled
 
-# =================== LLM 기반 뉴스/감정/번역 함수 ===================
-@st.cache_resource
-def get_hf_pipelines():
-    # device 선택 (GPU 있으면 0, 없으면 -1)
-    device = 0 if torch.cuda.is_available() else -1
-    summarizer = pipeline("summarization", model="facebook/bart-large-xsum", device=device)
-    sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english", device=device)
-    return summarizer, sentiment_analyzer
-
-def translate_to_korean(text):
-    if not text or len(text.strip()) == 0:
-        return ""
-    try:
-        return GoogleTranslator(source='auto', target='ko').translate(text)
-    except Exception:
-        return "[번역 실패]"
-
-def get_google_news(ticker):
-    googlenews = GoogleNews(lang='en')
-    start_date = (datetime.now() - timedelta(days=1)).strftime('%m/%d/%Y')
-    end_date = datetime.now().strftime('%m/%d/%Y')
-    googlenews.set_time_range(start_date, end_date)
-    googlenews.search(ticker)
-    results = googlenews.result()
-    news_data = []
-    for r in results:
-        news_data.append({
-            "Ticker": ticker,
-            "Date": r.get('date'),
-            "Title": r.get('title'),
-            "Media": r.get('media'),
-            "Link": r.get('link'),
-            "Description": r.get('desc')
-        })
-    return news_data
-
-def analyze_news(df, summarizer, sentiment_analyzer):
-    summaries, sentiments, final_scores, desc_ko, summary_ko = [], [], [], [], []
-    for desc in df["Description"]:
-        if not desc or len(desc.strip()) == 0:
-            summaries.append("")
-            sentiments.append("neutral")
-            final_scores.append(0)
-            desc_ko.append("")
-            summary_ko.append("")
-            continue
-        try:
-            summary = summarizer(desc, max_length=100, min_length=15, do_sample=False)[0]['summary_text']
-        except:
-            summary = desc[:300]
-        summaries.append(summary)
-        try:
-            desc_sent = sentiment_analyzer(desc)[0]
-            desc_label = desc_sent["label"].lower()
-            desc_score = desc_sent["score"] if desc_label == "positive" else -desc_sent["score"] if desc_label == "negative" else 0
-        except:
-            desc_label = "neutral"
-            desc_score = 0
-        try:
-            summ_sent = sentiment_analyzer(summary)[0]
-            summ_label = summ_sent["label"].lower()
-            summ_score = summ_sent["score"] if summ_label == "positive" else -summ_sent["score"] if summ_label == "negative" else 0
-        except:
-            summ_label = "neutral"
-            summ_score = 0
-        final_score = desc_score * 0.5 + summ_score * 0.5
-        sentiments.append(summ_label)
-        final_scores.append(final_score)
-        desc_ko.append(translate_to_korean(desc))
-        summary_ko.append(translate_to_korean(summary))
-    df["Summary"] = summaries
-    df["Sentiment"] = sentiments
-    df["Sentiment_Score"] = final_scores
-    df["Description_KO"] = desc_ko
-    df["Summary_KO"] = summary_ko
-    return df
-
-@st.cache_data(show_spinner="뉴스 & 감정 분석 로딩 중...")
-def get_sector_news_sentiment():
-    summarizer, sentiment_analyzer = get_hf_pipelines()
-    all_news = []
-    sector_to_syms = {}
-    for sector_label, etf in SECTOR_ETFS.items():
-        top_holdings = get_top_holdings(etf, n=3)
-        holding_syms = [sym for sym, _ in top_holdings]
-        sector_to_syms[sector_label] = holding_syms
-        for sym in holding_syms:
-            news_list = get_google_news(sym)
-            all_news.extend(news_list)
-    if not all_news:
-        return pd.DataFrame(), sector_to_syms
-    df_news = pd.DataFrame(all_news)
-    df_news = analyze_news(df_news, summarizer, sentiment_analyzer)
-    return df_news, sector_to_syms
-
-def show_sector_news_sentiment():
-    st.subheader("🔍 섹터별 주요 종목 뉴스 및 감정 점수")
-    with st.spinner("뉴스 및 감정 분석 중..."):
-        df, sector_syms = get_sector_news_sentiment()
-    if df.empty:
-        st.warning("뉴스 데이터를 찾을 수 없습니다.")
-        return
-    st.dataframe(
-        df[["Ticker", "Date", "Title", "Description", "Summary", "Sentiment", "Sentiment_Score", "Description_KO", "Summary_KO"]],
-        use_container_width=True, height=min(900, 30 + 30*len(df))
-    )
-    st.markdown("#### 섹터별 종목별 평균 감정 점수")
-    mean_scores = df.groupby("Ticker")["Sentiment_Score"].mean().reset_index()
-    fig = px.bar(mean_scores, x="Ticker", y="Sentiment_Score", color="Sentiment_Score", color_continuous_scale="RdBu")
-    st.plotly_chart(fig, use_container_width=True)
-
-# =================== 기존 Sentiment 분석 & 애널리스트/EPS 등 표 함수들 유지 ===================
 def classify_sentiment(score):
     if score >= 0.05:
         return 'Positive'
@@ -423,6 +319,130 @@ def classify_sentiment(score):
         return 'Negative'
     else:
         return 'Neutral'
+
+@st.cache_data
+def get_news_sentiment_data():
+    news_list = []
+    all_syms = []
+    for label, etf in SECTOR_ETFS.items():
+        top_holdings = get_top_holdings(etf, n=3)
+        holdings_syms = [sym for sym, _ in top_holdings]
+        all_syms.extend(holdings_syms)
+        for ticker_symbol in holdings_syms:
+            try:
+                ticker = yf.Ticker(ticker_symbol)
+                news = ticker.news
+                for article in news:
+                    content = article.get('content', {})
+                    news_list.append({
+                        'Ticker': ticker_symbol,
+                        'Date': content.get('pubDate'),
+                        'Headline': content.get('title')
+                    })
+            except Exception as e:
+                st.warning(f"{ticker_symbol} 뉴스 데이터 수집 오류: {e}")
+                continue
+    if not news_list:
+        return pd.DataFrame(), []
+    df = pd.DataFrame(news_list)
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    sid = SentimentIntensityAnalyzer()
+    df['Sentiment'] = df['Headline'].apply(
+        lambda headline: sid.polarity_scores(headline)['compound'] if headline else 0
+    )
+    df['Sentiment_Category'] = df['Sentiment'].apply(classify_sentiment)
+    return df, list(set(all_syms))
+
+def create_sentiment_histogram(df):
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=df['Sentiment'],
+        nbinsx=20,
+        name='Sentiment Distribution',
+        marker_color='rgba(235, 0, 140, 0.7)',
+        opacity=0.8
+    ))
+    hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    from scipy import ndimage
+    smoothed = ndimage.gaussian_filter1d(hist, 1)
+    fig.add_trace(go.Scatter(
+        x=bin_centers,
+        y=smoothed * len(df) * (bin_edges[1] - bin_edges[0]),
+        mode='lines',
+        name='KDE',
+        line=dict(color='royalblue', width=2)
+    ))
+    fig.update_layout(
+        title='감정 점수 분포',
+        xaxis_title='감정 점수',
+        yaxis_title='빈도',
+        template="plotly_dark",
+        height=400,
+        showlegend=True
+    )
+    return fig
+
+def create_sentiment_boxplot(df):
+    mean_values = df.groupby('Ticker')['Sentiment'].mean().reset_index()
+    fig = go.Figure()
+    tickers = df['Ticker'].unique()
+    colors = px.colors.qualitative.Set3[:len(tickers)]
+    for i, ticker in enumerate(tickers):
+        ticker_data = df[df['Ticker'] == ticker]['Sentiment']
+        fig.add_trace(go.Box(
+            y=ticker_data,
+            name=ticker,
+            marker_color=colors[i % len(colors)],
+            boxmean=True
+        ))
+    for i, row in mean_values.iterrows():
+        color = 'red' if row['Sentiment'] >= 0 else 'blue'
+        fig.add_annotation(
+            x=i,
+            y=row['Sentiment'],
+            text=f'{row["Sentiment"]:.2f}',
+            showarrow=False,
+            font=dict(color=color, size=12),
+            bgcolor="rgba(255,255,255,0.8)"
+        )
+    fig.update_layout(
+        title='감정 점수 분포',
+        xaxis_title='종목',
+        yaxis_title='감정 점수',
+        template="plotly_dark",
+        height=500,
+        showlegend=False
+    )
+    return fig
+
+def create_sentiment_countplot(df):
+    sentiment_counts = df['Sentiment_Category'].value_counts().reset_index()
+    sentiment_counts.columns = ['Sentiment_Category', 'Count']
+    color_map = {
+        'Positive': 'rgba(235,0,140,0.8)',
+        'Negative': 'rgba(65,105,225,0.8)',
+        'Neutral': 'rgba(102,194,165,0.8)'
+    }
+    colors = [color_map.get(cat, 'blue') for cat in sentiment_counts['Sentiment_Category']]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=sentiment_counts['Sentiment_Category'],
+        y=sentiment_counts['Count'],
+        marker_color=colors,
+        text=sentiment_counts['Count'],
+        textposition='inside',
+        textfont=dict(color='white', size=14)
+    ))
+    fig.update_layout(
+        title='감정 분포',
+        xaxis_title='감정 카테고리',
+        yaxis_title='뉴스 개수',
+        template="plotly_dark",
+        height=400,
+        showlegend=False
+    )
+    return fig
 
 def get_analyst_report_data(ticker_syms):
     rows = []
@@ -496,40 +516,77 @@ def get_valuation_eps_table(ticker_syms):
     df = df[['Ticker', '종목명', '현재 PE', '선행 PE', '현재 EPS', '선행 EPS', 'EPS 상승률']]
     return df
 
-# =================== 차트 부분별 기간 선택 UI & 렌더링 ===================
-period_options = {
-    "3개월": 3,
-    "6개월": 6,
-    "12개월": 12,
-    "24개월": 24,
-    "36개월": 36,
-}
+def show_sentiment_analysis():
+    st.subheader("✳️✴️ 주요 종목 뉴스 감정 분석")
+    with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
+        df, ticker_syms = get_news_sentiment_data()
+    if df.empty:
+        st.warning("뉴스 데이터를 가져올 수 없습니다.")
+        return
 
-def render_normalized_chart(title, etf_dict, key, default_val):
-    st.subheader(f"{title}")
-    if f"{key}_months" not in st.session_state:
-        st.session_state[f"{key}_months"] = default_val
-    months = st.selectbox(
-        "기간 선택", options=list(period_options.keys()),
-        index=list(period_options.values()).index(st.session_state[f"{key}_months"]),
-        key=f"{key}_selectbox"
-    )
-    months_val = period_options[months]
-    st.session_state[f"{key}_months"] = months_val
-    if st.session_state.get('updated', False):
-        norm_df = get_normalized_prices(etf_dict, months=months_val)
-        fig = go.Figure()
-        for col in norm_df.columns:
-            fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
-        fig.update_layout(
-            yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=500, legend=dict(orientation='h')
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("총 뉴스 개수", len(df))
+    with col2:
+        st.metric("평균 감정 점수", f"{df['Sentiment'].mean():.3f}")
+    with col3:
+        positive_pct = (df['Sentiment_Category'] == 'Positive').sum() / len(df) * 100
+        st.metric("긍정 비율", f"{positive_pct:.1f}%")
+    with col4:
+        negative_pct = (df['Sentiment_Category'] == 'Negative').sum() / len(df) * 100
+        st.metric("부정 비율", f"{negative_pct:.1f}%")
+
+    st.subheader("감정 점수 및 카테고리 분포")
+    chart_col1, chart_col2 = st.columns(2)
+    with chart_col1:
+        fig1 = create_sentiment_histogram(df)
+        st.plotly_chart(fig1, use_container_width=True)
+    with chart_col2:
+        fig3 = create_sentiment_countplot(df)
+        st.plotly_chart(fig3, use_container_width=True)
+
+    st.subheader("종목별 감정 점수")
+    fig2 = create_sentiment_boxplot(df)
+    st.plotly_chart(fig2, use_container_width=True)
+
+    with st.expander("상세 뉴스 데이터 보기"):
+        st.dataframe(
+            df[['Ticker', 'Date', 'Headline', 'Sentiment', 'Sentiment_Category']].sort_values('Date', ascending=False),
+            use_container_width=True
         )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("차트 갱신을 위해 상단 'Update' 버튼을 눌러주세요.")
 
-# =================== 성과, 뉴스 모니터링 대시보드 메인 ===================
+    st.markdown("---")
+    st.subheader("👨‍💼🔝 주요 종목 애널리스트 의견")
+    st.caption("• 애널리스트 등급 점수: 1 = Strong Buy,  2 = Buy,  3 = Neutral,  4 = Sell,  5 = Strong Sell")
+    st.caption("• 애널리스트 목표가: 최근 3~6개월 내의 애널리스트 리포트에서 제시된 목표가(Price Target)의 평균")
+    with st.spinner("애널리스트 등급 데이터 로딩 중..."):
+        analyst_df = get_analyst_report_data(ticker_syms)
+    analyst_df_sorted = analyst_df.sort_values('상승여력', ascending=False, na_position='last')
+    st.dataframe(
+        analyst_df_sorted.style.format({
+            '애널리스트 등급 점수': '{:.2f}',
+            '애널리스트 목표가': '{:,.2f}',
+            '현재가': '{:,.2f}',
+            '상승여력': '{:.1f}%'
+        }).background_gradient(subset=['상승여력'], cmap='Spectral'),
+        use_container_width=True, height=min(900, 30 + 30*len(analyst_df))
+    )
+    st.subheader("🔍 주요 종목 밸류에이션 및 주당순이익 추이")
+    st.caption("• 현재 = Trailing 12M,  선행 = Blended Forward 12M")
+    with st.spinner("밸류에이션 및 EPS 데이터 로딩 중..."):
+        valuation_df = get_valuation_eps_table(ticker_syms)
+    valuation_df_sorted = valuation_df.sort_values('EPS 상승률', ascending=False, na_position='last')
+    st.dataframe(
+        valuation_df_sorted.style.format({
+            '현재 PER': '{:.2f}',
+            '선행 PER': '{:.2f}',
+            '현재 EPS': '{:.2f}',
+            '선행 EPS': '{:.2f}',
+            'EPS 상승률': '{:.1f}%'
+        }).background_gradient(subset=['EPS 상승률'], cmap='Spectral'),
+        use_container_width=True, height=min(900, 30 + 30*len(valuation_df))
+    )
+
 def show_all_performance_tables():
     perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
     st.subheader("📊 주식시장")
@@ -611,7 +668,39 @@ def show_all_performance_tables():
             else:
                 st.caption("샘플 데이터를 불러올 수 없습니다.")
 
-# =================== 전체 대시보드 구동 ===================
+# -------------------- 차트 부분별 기간 선택 UI & 렌더링 --------------------
+period_options = {
+    "3개월": 3,
+    "6개월": 6,
+    "12개월": 12,
+    "24개월": 24,
+    "36개월": 36,
+}
+
+def render_normalized_chart(title, etf_dict, key, default_val):
+    st.subheader(f"{title}")
+    if f"{key}_months" not in st.session_state:
+        st.session_state[f"{key}_months"] = default_val
+    months = st.selectbox(
+        "기간 선택", options=list(period_options.keys()),
+        index=list(period_options.values()).index(st.session_state[f"{key}_months"]),
+        key=f"{key}_selectbox"
+    )
+    months_val = period_options[months]
+    st.session_state[f"{key}_months"] = months_val
+    if st.session_state.get('updated', False):
+        norm_df = get_normalized_prices(etf_dict, months=months_val)
+        fig = go.Figure()
+        for col in norm_df.columns:
+            fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
+        fig.update_layout(
+            yaxis_title="100 기준 누적수익률(%)",
+            template="plotly_dark", height=500, legend=dict(orientation='h')
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("차트 갱신을 위해 상단 'Update' 버튼을 눌러주세요.")
+
 if update_clicked:
     st.session_state['updated'] = True
 
@@ -621,8 +710,24 @@ if st.session_state.get('updated', False):
     render_normalized_chart("✅ 주요 주가지수 수익률", STOCK_ETFS, "idx", 6)
     render_normalized_chart("☑️ 섹터 ETF 수익률", SECTOR_ETFS, "sector", 6)
     render_normalized_chart("☑️ 스타일 ETF 수익률", STYLE_ETFS, "style", 6)
-    st.subheader("📰 섹터별 주요 종목 헤드라인 및 감정 분석")
-    show_sector_news_sentiment()
-    # 아래 기존 show_sentiment_analysis() 등은 필요시 추가적으로 LLM 뉴스와 별개로 사용할 수 있음
+    st.subheader("📰 섹터별 주요 종목 헤드라인")
+    for label, etf in SECTOR_ETFS.items():
+        top_holdings = get_top_holdings(etf, n=3)
+        if top_holdings:
+            sector_name = label.split()[0] + " 섹터"
+            holding_names = [name for _, name in top_holdings]
+            holding_syms = [sym for sym, _ in top_holdings]
+            st.write(f"#### {sector_name} 주요 종목: {', '.join(holding_names)}")
+            for sym, name in top_holdings:
+                news = get_news_for_ticker(sym, limit=1)
+                if news:
+                    art = news[0]
+                    st.markdown(f"- **[{sym}]** {art['date']}: {art['title']}")
+                else:
+                    st.write(f"- [{sym}] 뉴스 없음")
+        else:
+            st.write(f"- {label}: 보유종목 정보 없음")
+    st.markdown("---")
+    show_sentiment_analysis()
 else:
     st.info("상단 'Update' 버튼을 눌러주세요.")
