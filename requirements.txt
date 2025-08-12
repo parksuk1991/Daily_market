@@ -14,3 +14,4 @@ transformers
 GoogleNews
 deep-translator
 openpyxl
+torch
