@@ -34,15 +34,37 @@ section = st.sidebar.radio(
     ["시장 성과", "섹터별 헤드라인&뉴스", "애널리스트 의견"]
 )
 
-if update_clicked:
-    st.session_state['updated'] = True
+# 데이터 로딩 및 session_state 관리
+if "updated" not in st.session_state:
+    st.session_state["updated"] = False
 
-if st.session_state.get('updated', False):
+if update_clicked:
+    st.session_state["updated"] = True
+    # 각 섹션별 데이터 초기화 및 로드
+    st.session_state["main_data_loaded"] = False
+    st.session_state["sector_data_loaded"] = False
+    st.session_state["analyst_data_loaded"] = False
+
+# 각 섹션별로 데이터 로드 플래그와 실제 데이터
+if st.session_state["updated"]:
     if section == "시장 성과":
-        show_main_dashboard()
+        if not st.session_state.get("main_data_loaded", False):
+            show_main_dashboard()
+            st.session_state["main_data_loaded"] = True
+        else:
+            # 이미 데이터가 로드되었으니 재실행하지 않고 그대로 보여줌
+            show_main_dashboard()
     elif section == "섹터별 헤드라인&뉴스":
-        show_sector_headlines()
+        if not st.session_state.get("sector_data_loaded", False):
+            show_sector_headlines()
+            st.session_state["sector_data_loaded"] = True
+        else:
+            show_sector_headlines()
     elif section == "애널리스트 의견":
-        show_analyst_opinion()
+        if not st.session_state.get("analyst_data_loaded", False):
+            show_analyst_opinion()
+            st.session_state["analyst_data_loaded"] = True
+        else:
+            show_analyst_opinion()
 else:
     st.info("상단 'Update' 버튼을 눌러주세요.")
