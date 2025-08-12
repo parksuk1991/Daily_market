@@ -10,8 +10,3 @@ scipy
 nltk
 matplotlib
 requests
-transformers
-GoogleNews
-deep-translator
-openpyxl
-torch
