@@ -14,6 +14,15 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import matplotlib.pyplot as plt
 nltk.download('vader_lexicon')
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+from transformers import pipeline, logging as hf_logging
+hf_logging.set_verbosity_error()
+
+from GoogleNews import GoogleNews
+from deep_translator import GoogleTranslator
+
+
 try:
     import lxml
 except ImportError:
@@ -263,6 +272,87 @@ def get_top_holdings(etf_ticker, n=3):
             return []
     except Exception:
         return []
+
+# ===============================================
+# 뉴스 수집 (GoogleNews)
+# ===============================================
+def get_google_news(ticker):
+    googlenews = GoogleNews(lang='en')
+    start_date = (datetime.now() - timedelta(days=1)).strftime('%m/%d/%Y')
+    end_date = datetime.now().strftime('%m/%d/%Y')
+    googlenews.set_time_range(start_date, end_date)
+    googlenews.search(ticker)
+    results = googlenews.result()
+    news_data = []
+    for r in results:
+        news_data.append({
+            "Ticker": ticker,
+            "Date": r.get('date'),
+            "Title": r.get('title'),
+            "Media": r.get('media'),
+            "Link": r.get('link'),
+            "Description": r.get('desc')
+        })
+    return news_data
+
+# ===============================================
+# LLM 분석 파이프라인 (요약/감정분석/번역)
+# ===============================================
+summarizer = pipeline("summarization", model="facebook/bart-large-xsum", device=-1)
+sentiment_analyzer = pipeline("sentiment-analysis",
+                              model="distilbert-base-uncased-finetuned-sst-2-english", device=-1)
+
+def translate_to_korean(text):
+    if not text or len(text.strip()) == 0:
+        return ""
+    try:
+        return GoogleTranslator(source='auto', target='ko').translate(text)
+    except Exception:
+        return "[번역 실패]"
+
+def analyze_news(df):
+    summaries, sentiments, final_scores, desc_ko, summary_ko = [], [], [], [], []
+    for desc in df["Description"]:
+        if not desc or len(desc.strip()) == 0:
+            summaries.append("")
+            sentiments.append("neutral")
+            final_scores.append(0)
+            desc_ko.append("")
+            summary_ko.append("")
+            continue
+        try:
+            summary = summarizer(desc, max_length=100, min_length=15, do_sample=False)[0]['summary_text']
+        except:
+            summary = desc[:300]
+        summaries.append(summary)
+        try:
+            desc_sent = sentiment_analyzer(desc)[0]
+            desc_label = desc_sent["label"].lower()
+            desc_score = desc_sent["score"] if desc_label == "positive" else -desc_sent["score"] if desc_label == "negative" else 0
+        except:
+            desc_label = "neutral"
+            desc_score = 0
+        try:
+            summ_sent = sentiment_analyzer(summary)[0]
+            summ_label = summ_sent["label"].lower()
+            summ_score = summ_sent["score"] if summ_label == "positive" else -summ_sent["score"] if summ_label == "negative" else 0
+        except:
+            summ_label = "neutral"
+            summ_score = 0
+        final_score = desc_score * 0.5 + summ_score * 0.5
+        sentiments.append(summ_label)
+        final_scores.append(final_score)
+        desc_ko.append(translate_to_korean(desc))
+        summary_ko.append(translate_to_korean(summary))
+    df["Summary"] = summaries
+    df["Sentiment_Label"] = sentiments
+    df["Sentiment_Score"] = final_scores
+    df["Description_KO"] = desc_ko
+    df["Summary_KO"] = summary_ko
+    return df
+
+
+
 
 def get_news_for_ticker(ticker_symbol, limit=1):
     y = yf.Ticker(ticker_symbol)
@@ -731,3 +821,75 @@ if st.session_state.get('updated', False):
     show_sentiment_analysis()
 else:
     st.info("상단 'Update' 버튼을 눌러주세요.")
+
+
+# ===============================================
+# Streamlit 앱 UI 및 분석 데이터 표시
+# ===============================================
+st.set_page_config(
+    page_title="Global Market Sector Sentiment",
+    page_icon="🌐",
+    layout="wide"
+)
+st.title("🌐 섹터별 주요 종목 헤드라인 및 감정 분석 (GoogleNews + Transformers)")
+
+update_clicked = st.button("Update", type="primary", use_container_width=False, key="main_update_btn")
+
+def show_sector_news_sentiment():
+    st.subheader("📰 섹터별 주요 종목 헤드라인 및 감정 분석")
+    sector_news_data = []
+    holdings_syms = []
+    for sector_label, etf in SECTOR_ETFS.items():
+        top_holdings = get_top_holdings(etf, n=3)
+        holding_names = [name for _, name in top_holdings]
+        holding_syms = [sym for sym, _ in top_holdings]
+        holdings_syms.extend(holding_syms)
+        st.write(f"#### {sector_label.split()[0]} 섹터 주요 종목: {', '.join(holding_names)}")
+        for sym, name in top_holdings:
+            news_list = get_google_news(sym)
+            if news_list:
+                for news in news_list[:1]:  # 종목별 1개 뉴스만 표시
+                    news["Sector"] = sector_label
+                    sector_news_data.append(news)
+                    st.markdown(f"- **[{sym}]** {news.get('Date')}: {news.get('Title')} ([{news.get('Media')}])")
+            else:
+                st.write(f"- [{sym}] 뉴스 없음")
+    st.markdown("---")
+    # 뉴스 데이터프레임 생성 및 감정분석/요약
+    if sector_news_data:
+        df_news = pd.DataFrame(sector_news_data)
+        with st.spinner("뉴스 감정 분석 및 요약 중..."):
+            df_news = analyze_news(df_news)
+        st.subheader("종목별 감정 점수 및 요약")
+        st.dataframe(
+            df_news[["Ticker", "Title", "Summary", "Sentiment_Label", "Sentiment_Score", "Summary_KO"]],
+            use_container_width=True
+        )
+        # 감정 점수 분포 시각화
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(
+            x=df_news['Sentiment_Score'],
+            nbinsx=20,
+            marker_color='rgba(235, 0, 140, 0.7)',
+            opacity=0.8
+        ))
+        fig.update_layout(
+            title='감정 점수 분포',
+            xaxis_title='감정 점수',
+            yaxis_title='빈도',
+            template="plotly_dark",
+            height=400,
+            showlegend=False
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("수집된 뉴스 데이터가 없습니다. 잠시 후 다시 시도해 주세요.")
+
+if update_clicked:
+    show_sector_news_sentiment()
+else:
+    st.info("상단 'Update' 버튼을 눌러주세요.")
+
+
+
+
