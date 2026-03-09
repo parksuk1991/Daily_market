@@ -775,7 +775,7 @@ def show_all_performance_tables():
         sector_perf = get_perf_table_improved(SECTOR_ETFS)
     if not sector_perf.empty:
         st.dataframe(
-            style_perf_table(sector_perf.set_index('���산명'), perf_cols),
+            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
             width='stretch', height=420
         )
 
