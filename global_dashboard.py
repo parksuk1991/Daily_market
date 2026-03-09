@@ -12,6 +12,9 @@ import time
 import warnings
 import ssl
 import urllib3
+import feedparser
+from bs4 import BeautifulSoup
+import re
 
 warnings.filterwarnings('ignore')
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -107,20 +110,355 @@ STYLE_ETFS = {
     'Low Volatility (USMV)': 'USMV'
 }
 
-# ====== 섹터 ETF + 주요 종목 (marketmonitor 스타일) ======
+# ====== 섹터 ETF (동적 holdings 로드) ======
 SECTOR_ETFS = {
-    'IT (XLK)': {'ticker': 'XLK', 'holdings': ['MSFT', 'AAPL', 'NVDA', 'META', 'GOOGL']},
-    '헬스케어 (XLV)': {'ticker': 'XLV', 'holdings': ['JNJ', 'UNH', 'PFE', 'ABBV', 'LLY']},
-    '금융 (XLF)': {'ticker': 'XLF', 'holdings': ['JPM', 'BAC', 'WFC', 'GS', 'MS']},
-    '커뮤니케이션 (XLC)': {'ticker': 'XLC', 'holdings': ['META', 'GOOGL', 'VZ', 'T', 'DIS']},
-    '에너지 (XLE)': {'ticker': 'XLE', 'holdings': ['XOM', 'CVX', 'COP', 'MPC', 'PSX']},
-    '산업재 (XLI)': {'ticker': 'XLI', 'holdings': ['BA', 'CAT', 'MMM', 'GE', 'RTX']},
-    '소재 (XLB)': {'ticker': 'XLB', 'holdings': ['LIN', 'APD', 'SHW', 'NEM', 'DOW']},
-    '필수소비재 (XLP)': {'ticker': 'XLP', 'holdings': ['PG', 'KO', 'WMT', 'MO', 'PM']},
-    '자유소비재 (XLY)': {'ticker': 'XLY', 'holdings': ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE']},
-    '유틸리티 (XLU)': {'ticker': 'XLU', 'holdings': ['NEE', 'DUK', 'SO', 'EXC', 'AEP']},
-    '부동산 (XLRE)': {'ticker': 'XLRE', 'holdings': ['PLD', 'AMT', 'CCI', 'EQIX', 'SPG']}
+    'IT (XLK)': 'XLK',
+    '헬스케어 (XLV)': 'XLV',
+    '금융 (XLF)': 'XLF',
+    '커뮤니케이션 (XLC)': 'XLC',
+    '에너지 (XLE)': 'XLE',
+    '산업재 (XLI)': 'XLI',
+    '소재 (XLB)': 'XLB',
+    '필수소비재 (XLP)': 'XLP',
+    '자유소비재 (XLY)': 'XLY',
+    '유틸리티 (XLU)': 'XLU',
+    '부동산 (XLRE)': 'XLRE'
 }
+
+# ====== ETF Collector (marketmonitor ��식) ======
+class ETFCollector:
+    """동적 ETF Holdings 수집"""
+    
+    def __init__(self):
+        try:
+            from curl_cffi import requests as cffi_requests
+            self.session = cffi_requests.Session(impersonate="chrome")
+            self.session.verify = False
+        except:
+            self.session = None
+    
+    def get_etf_holdings(self, ticker: str, retry=3):
+        """Top 10 Holdings 동적 로드"""
+        for attempt in range(retry):
+            try:
+                from yahooquery import Ticker
+                
+                if self.session:
+                    etf = Ticker(ticker, session=self.session)
+                else:
+                    etf = Ticker(ticker)
+                
+                holdings = etf.fund_holding_info
+                
+                if ticker in holdings and 'holdings' in holdings[ticker]:
+                    top_holdings = holdings[ticker]['holdings'][:10]
+                    
+                    result = []
+                    for holding in top_holdings:
+                        symbol = holding.get('symbol', '')
+                        weight = holding.get('holdingPercent', 0.0)
+                        
+                        if symbol:
+                            result.append({
+                                'ticker': symbol,
+                                'name': holding.get('holdingName', symbol),
+                                'weight': weight * 100
+                            })
+                    
+                    if result:
+                        return result
+                
+                if attempt < retry - 1:
+                    time.sleep(2)
+            except Exception as e:
+                if attempt < retry - 1:
+                    time.sleep(2)
+                continue
+        
+        return []
+    
+    def get_etf_name(self, ticker: str):
+        """ETF 이름"""
+        try:
+            from yahooquery import Ticker
+            
+            if self.session:
+                etf = Ticker(ticker, session=self.session)
+            else:
+                etf = Ticker(ticker)
+            
+            quote_type = etf.quote_type
+            
+            if ticker in quote_type:
+                return quote_type[ticker].get('longName', f'{ticker} ETF')
+            
+            return f'{ticker} ETF'
+        except:
+            return f'{ticker} ETF'
+
+# ====== News Collector (경량 버전) ======
+class NewsCollector:
+    """Yahoo RSS 기반 뉴스 수집"""
+    
+    def __init__(self, days=3):
+        self.days = days
+        self.cutoff_date = datetime.now() - timedelta(days=days)
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+    
+    def extract_content(self, url: str):
+        """본문 추출"""
+        try:
+            response = requests.get(url, headers=self.headers, timeout=8)
+            if response.status_code != 200:
+                return ""
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                tag.decompose()
+            
+            paragraphs = soup.find_all('p')
+            texts = [p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 30]
+            
+            full_text = ' '.join(texts)
+            
+            return full_text[:5000] if full_text else ""
+        except:
+            return ""
+    
+    def is_valid_content(self, content: str):
+        """Paywall 체크"""
+        if not content or len(content) < 200:
+            return False
+        
+        paywall_words = ['sign in', 'log in', 'subscribe', 'register']
+        content_lower = content.lower()
+        
+        for word in paywall_words:
+            if word in content_lower[:500]:
+                return False
+        
+        return True
+    
+    def create_summary(self, text: str):
+        """추출식 요약"""
+        if not text or len(text) < 20:
+            return ""
+        
+        sentences = re.split(r'[.!?]\s+', text)
+        
+        summary_sentences = []
+        total_len = 0
+        
+        for sentence in sentences[:5]:
+            sentence = sentence.strip()
+            if len(sentence) > 20:
+                summary_sentences.append(sentence)
+                total_len += len(sentence)
+                
+                if total_len >= 300:
+                    break
+        
+        summary = '. '.join(summary_sentences)
+        
+        if len(summary) > 300:
+            summary = summary[:300] + '...'
+        
+        return summary if summary else text[:300] + '...'
+    
+    def collect_yahoo_rss(self, ticker: str):
+        """Yahoo Finance RSS"""
+        try:
+            url = f"https://finance.yahoo.com/rss/headline?s={ticker}"
+            feed = feedparser.parse(url)
+            
+            news = []
+            for entry in feed.entries[:3]:
+                try:
+                    pub_date = entry.get('published_parsed')
+                    if pub_date:
+                        pub_dt = datetime(*pub_date[:6])
+                        if pub_dt < self.cutoff_date:
+                            continue
+                        date_str = pub_dt.strftime('%Y-%m-%d')
+                    else:
+                        date_str = datetime.now().strftime('%Y-%m-%d')
+                    
+                    title = entry.get('title', '')
+                    article_url = entry.get('link', '')
+                    summary = entry.get('summary', '')
+                    
+                    content = self.extract_content(article_url)
+                    
+                    if not self.is_valid_content(content):
+                        continue
+                    
+                    highlights = self.create_summary(content)
+                    
+                    news.append({
+                        'ticker': ticker,
+                        'title': title,
+                        'url': article_url,
+                        'published_at': date_str,
+                        'summary': summary[:300],
+                        'content': content,
+                        'highlights': highlights,
+                        'source': 'Yahoo Finance'
+                    })
+                except:
+                    continue
+            
+            return news
+        except:
+            return []
+    
+    def collect_for_ticker(self, ticker: str, company: str):
+        """티커별 뉴스"""
+        all_news = []
+        
+        yahoo_news = self.collect_yahoo_rss(ticker)
+        all_news.extend(yahoo_news)
+        
+        for item in all_news:
+            item['company_name'] = company
+        
+        return all_news
+    
+    def collect_all(self, holdings, etf_ticker: str):
+        """전체 수집"""
+        all_news = []
+        
+        for idx, holding in enumerate(holdings):
+            ticker = holding['ticker']
+            company = holding['name']
+            
+            news = self.collect_for_ticker(ticker, company)
+            
+            for item in news:
+                item['etf'] = etf_ticker
+                item['weight'] = holding['weight']
+            
+            all_news.extend(news)
+            time.sleep(0.3)
+        
+        return all_news
+
+# ====== Sentiment Analyzer (FinBERT 경량 버전) ======
+class FinBERTAnalyzer:
+    """경량 FinBERT"""
+    
+    def __init__(self):
+        self.pipe = None
+        self._initialize()
+    
+    def _initialize(self):
+        """모델 로드"""
+        try:
+            from transformers import pipeline
+            self.pipe = pipeline(
+                "text-classification",
+                model="ProsusAI/finbert",
+                device=-1,
+                max_length=512,
+                truncation=True
+            )
+        except Exception as e:
+            self.pipe = None
+    
+    def analyze_chunk(self, text: str):
+        """단일 청크 분석"""
+        if not self.pipe or not text or len(text) < 10:
+            return 0.0
+        
+        try:
+            text = re.sub(r'<[^>]+>', '', text)
+            text = re.sub(r'http\S+', '', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            
+            result = self.pipe(text[:512])[0]
+            
+            label = result['label']
+            score = result['score']
+            
+            if label == 'positive':
+                return score
+            elif label == 'negative':
+                return -score
+            else:
+                return 0.0
+        except:
+            return 0.0
+    
+    def analyze_text(self, text: str):
+        """텍스트 분석 (최대 3개 청크)"""
+        if not text or len(text) < 100:
+            return 0.0
+        
+        chunk_size = 1000
+        
+        chunks = []
+        for i in range(0, min(len(text), 3000), chunk_size):
+            chunk = text[i:i+chunk_size]
+            if len(chunk) > 100:
+                chunks.append(chunk)
+        
+        scores = []
+        for chunk in chunks[:3]:
+            score = self.analyze_chunk(chunk)
+            if score != 0.0:
+                scores.append(score)
+        
+        if scores:
+            return sum(scores) / len(scores)
+        
+        return 0.0
+    
+    def categorize(self, title: str):
+        """카테고리"""
+        title_lower = title.lower()
+        
+        if any(w in title_lower for w in ['earnings', 'revenue', 'profit']):
+            return 'Earnings'
+        elif any(w in title_lower for w in ['merger', 'acquisition', 'deal']):
+            return 'M&A'
+        elif any(w in title_lower for w in ['product', 'launch']):
+            return 'Product'
+        elif any(w in title_lower for w in ['regulation', 'lawsuit']):
+            return 'Regulatory'
+        elif any(w in title_lower for w in ['analyst', 'upgrade', 'downgrade']):
+            return 'Analyst'
+        else:
+            return 'General'
+    
+    def analyze_news(self, news: dict):
+        """뉴스 분석"""
+        content = news.get('content', '')
+        
+        if not content or len(content) < 100:
+            return None
+        
+        sentiment = self.analyze_text(content)
+        
+        news['sentiment_score'] = round(sentiment, 4)
+        news['category'] = self.categorize(news.get('title', ''))
+        
+        return news
+    
+    def batch_analyze(self, news_list: list):
+        """일괄 분석"""
+        analyzed = []
+        
+        for idx, news in enumerate(news_list):
+            if (idx + 1) % 5 == 0:
+                print(f"  분석: {idx + 1}/{len(news_list)}")
+            
+            result = self.analyze_news(news)
+            if result:
+                analyzed.append(result)
+        
+        return analyzed
 
 # ---- 주요 데이터 함수 ----
 def get_perf_table_improved(label2ticker, ref_date=None):
@@ -215,7 +553,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     return df_result
 
 def get_sample_calculation_dates(label2ticker, ref_date=None):
-    """계산 기준일 표시"""
+    """계산 기준일"""
     if ref_date is None:
         ref_date = datetime.now().date()
     sample_ticker = list(label2ticker.values())[0]
@@ -258,7 +596,7 @@ def get_sample_calculation_dates(label2ticker, ref_date=None):
 
 @st.cache_data(show_spinner="차트 데이터 로딩 중...")
 def get_normalized_prices(label2ticker, months=6):
-    """정규화된 가격 데이터"""
+    """정규화된 가격"""
     tickers = list(label2ticker.values())
     end = datetime.now().date()
     start = end - timedelta(days=months*31)
@@ -301,196 +639,90 @@ def style_perf_table(df, perf_cols):
             styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
     return styled
 
-# ====== Sentiment 분석 함수 (marketmonitor 방식) ======
-def get_etf_holdings_enhanced(etf_ticker, retry=3):
-    """yahooquery로 ETF 보유종목 수집 (재시도 로직)"""
-    for attempt in range(retry):
-        try:
-            from yahooquery import Ticker
-            etf = Ticker(etf_ticker)
-            holdings = etf.fund_holding_info
-            
-            if etf_ticker in holdings and 'holdings' in holdings[etf_ticker]:
-                top_holdings = holdings[etf_ticker]['holdings'][:5]
-                
-                result = []
-                for holding in top_holdings:
-                    symbol = holding.get('symbol', '')
-                    weight = holding.get('holdingPercent', 0.0)
-                    
-                    if symbol:
-                        result.append({
-                            'ticker': symbol,
-                            'name': holding.get('holdingName', symbol),
-                            'weight': weight * 100
-                        })
-                
-                if result:
-                    return result
-            
-            if attempt < retry - 1:
-                time.sleep(2)
-        except Exception as e:
-            if attempt < retry - 1:
-                time.sleep(2)
-            continue
-    
-    return []
+# ====== 섹터 분석 (marketmonitor 방식) ======
+@st.cache_resource
+def load_analyzer():
+    return FinBERTAnalyzer()
 
-@st.cache_data(ttl=3600)
-def collect_news_for_symbols(symbols):
-    """Yahoo RSS로 뉴스 수집"""
-    import feedparser
-    
-    all_news = []
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    
-    for symbol in symbols:
-        if not symbol or not isinstance(symbol, str):
-            continue
-        
-        try:
-            url = f"https://finance.yahoo.com/rss/headline?s={symbol}"
-            feed = feedparser.parse(url)
-            
-            for entry in feed.entries[:2]:  # 2개로 제한
-                try:
-                    title = entry.get('title', '')
-                    article_url = entry.get('link', '')
-                    pub_date = entry.get('published_parsed')
-                    
-                    if pub_date:
-                        pub_dt = datetime(*pub_date[:6])
-                        date_str = pub_dt.strftime('%Y-%m-%d')
-                    else:
-                        date_str = datetime.now().strftime('%Y-%m-%d')
-                    
-                    if title:
-                        all_news.append({
-                            'ticker': symbol,
-                            'title': title[:150],
-                            'url': article_url,
-                            'date': date_str
-                        })
-                except:
-                    continue
-            
-            time.sleep(0.3)
-        except:
-            continue
-    
-    return all_news
-
-def analyze_sentiment_vader(text):
-    """VADER 기반 감정 분석"""
-    from nltk.sentiment.vader import SentimentIntensityAnalyzer
-    import nltk
-    
+def run_sector_etf_analysis(etf_ticker: str, etf_name: str):
+    """단일 섹터 ETF 분석"""
     try:
-        nltk.download('vader_lexicon', quiet=True)
-        sid = SentimentIntensityAnalyzer()
-        scores = sid.polarity_scores(text)
-        return scores['compound']
-    except:
-        return 0.0
-
-def show_sector_headlines_enhanced():
-    """섹터별 뉴스 헤드라인 (개선버전)"""
-    st.subheader("📰 섹터별 주요 종목 뉴스")
-    
-    for sector_name, sector_info in SECTOR_ETFS.items():
-        holdings = sector_info.get('holdings', [])
+        # Holdings
+        collector = ETFCollector()
+        holdings = collector.get_etf_holdings(etf_ticker)
         
-        if holdings:
-            st.write(f"#### {sector_name}")
-            
-            try:
-                news_data = collect_news_for_symbols(holdings)
-                
-                if news_data:
-                    for article in news_data[:3]:  # 섹터당 최대 3개
-                        sentiment = analyze_sentiment_vader(article['title'])
-                        sentiment_emoji = "🟢" if sentiment > 0.1 else "🔴" if sentiment < -0.1 else "🟡"
-                        st.markdown(f"- {sentiment_emoji} **[{article['ticker']}]** {article['title']}")
-                else:
-                    st.caption(f"- {sector_name}: 뉴스 데이터 없음")
-            except Exception as e:
-                st.caption(f"- {sector_name}: 데이터 로드 실패")
+        if not holdings:
+            return None, f"❌ {etf_name}: Holdings 없음"
+        
+        # 뉴스 수집
+        news_collector = NewsCollector(days=3)
+        all_news = news_collector.collect_all(holdings, etf_ticker)
+        
+        if not all_news:
+            return holdings, f"⚠️ {etf_name}: 뉴스 없음"
+        
+        # 감정 분석
+        analyzer = load_analyzer()
+        analyzed = analyzer.batch_analyze(all_news)
+        
+        return analyzed, None
+    
+    except Exception as e:
+        return None, f"❌ {etf_name}: {str(e)[:50]}"
 
-def show_sector_sentiment_analysis():
-    """섹터 감정 분석"""
-    st.subheader("✳️✴️ 섹터별 종목 감정 분석")
+def show_sector_analysis():
+    """섹터 분석"""
+    st.subheader("📰 섹터별 주요 종목 뉴스 & 감정 분석")
     
-    all_news_data = []
+    sector_results = {}
     
-    with st.spinner("뉴스 데이터 수집 및 감정 분석 중..."):
-        for sector_name, sector_info in SECTOR_ETFS.items():
-            holdings = sector_info.get('holdings', [])
-            
-            try:
-                news_data = collect_news_for_symbols(holdings)
+    for sector_name, etf_ticker in SECTOR_ETFS.items():
+        try:
+            with st.spinner(f"{sector_name} 분석 중..."):
+                analyzed_news, error = run_sector_etf_analysis(etf_ticker, sector_name)
                 
-                for article in news_data:
-                    sentiment = analyze_sentiment_vader(article['title'])
-                    all_news_data.append({
-                        'Sector': sector_name.split()[0],
-                        'Ticker': article['ticker'],
-                        'Title': article['title'],
-                        'Date': article['date'],
-                        'Sentiment': sentiment,
-                        'URL': article['url']
-                    })
-            except:
-                continue
+                if error:
+                    st.warning(error)
+                elif analyzed_news:
+                    sector_results[sector_name] = analyzed_news
+        except Exception as e:
+            st.warning(f"❌ {sector_name}: 오류 발생")
     
-    if not all_news_data:
-        st.warning("뉴스 데이터를 수집할 수 없습니다.")
+    if not sector_results:
+        st.warning("섹터 분석 데이터를 가져올 수 없습니다.")
         return
     
-    df_sentiment = pd.DataFrame(all_news_data)
-    
-    # 메트릭 표시
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("총 뉴스 개수", len(df_sentiment))
-    with col2:
-        st.metric("평균 감정 점수", f"{df_sentiment['Sentiment'].mean():.3f}")
-    with col3:
-        positive_pct = (df_sentiment['Sentiment'] > 0.1).sum() / len(df_sentiment) * 100 if len(df_sentiment) > 0 else 0
-        st.metric("긍정 비율", f"{positive_pct:.1f}%")
-    with col4:
-        negative_pct = (df_sentiment['Sentiment'] < -0.1).sum() / len(df_sentiment) * 100 if len(df_sentiment) > 0 else 0
-        st.metric("부정 비율", f"{negative_pct:.1f}%")
-    
-    # 차트 1: 종목별 감��
-    st.subheader("종목별 감정 점수")
-    ticker_sentiment = df_sentiment.groupby('Ticker')['Sentiment'].mean().sort_values().tail(10)
-    colors = ['#f44336' if x < -0.1 else '#4CAF50' if x > 0.1 else '#FFC107' for x in ticker_sentiment]
-    
-    fig = go.Figure()
-    fig.add_trace(go.Bar(y=ticker_sentiment.index, x=ticker_sentiment.values, orientation='h',
-                         marker=dict(color=colors), text=[f"{v:.3f}" for v in ticker_sentiment.values], 
-                         textposition='outside'))
-    fig.update_layout(title="종목별 감정 점수", height=400, showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 차트 2: 감정 분포
-    sentiment_dist = pd.cut(df_sentiment['Sentiment'], bins=[-1, -0.1, 0.1, 1], 
-                            labels=['Negative', 'Neutral', 'Positive']).value_counts()
-    colors_dist = ['#f44336', '#FFC107', '#4CAF50']
-    
-    fig2 = go.Figure()
-    fig2.add_trace(go.Bar(x=sentiment_dist.index, y=sentiment_dist.values, marker_color=colors_dist,
-                          text=sentiment_dist.values, textposition='inside'))
-    fig2.update_layout(title="감정 분포", height=400, showlegend=False)
-    st.plotly_chart(fig2, use_container_width=True)
-    
-    # 상세 데이터
-    with st.expander("상세 뉴스 데이터"):
-        st.dataframe(df_sentiment.sort_values('Date', ascending=False), use_container_width=True)
+    # 섹터별 표시
+    for sector_name, news_list in sector_results.items():
+        st.markdown(f"#### {sector_name}")
+        
+        if news_list:
+            # 메트릭
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("뉴스 개수", len(news_list))
+            with col2:
+                avg_sentiment = np.mean([n.get('sentiment_score', 0) for n in news_list])
+                st.metric("평균 감정", f"{avg_sentiment:.3f}")
+            with col3:
+                positive_count = sum(1 for n in news_list if n.get('sentiment_score', 0) > 0.1)
+                st.metric("긍정 뉴스", f"{positive_count}/{len(news_list)}")
+            
+            # 상세 데이터
+            news_df = pd.DataFrame([{
+                'Ticker': n.get('ticker', ''),
+                'Title': n.get('title', '')[:80],
+                'Date': n.get('published_at', ''),
+                'Sentiment': round(n.get('sentiment_score', 0), 3),
+                'Category': n.get('category', ''),
+            } for n in news_list[:10]])
+            
+            st.dataframe(news_df, use_container_width=True)
+        
+        st.markdown("---")
 
 def show_all_performance_tables():
-    """모든 성과 테이블 표시"""
+    """성과 테이블"""
     perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
     
     st.subheader("📊 주식시장")
@@ -521,7 +753,7 @@ def show_all_performance_tables():
         )
     
     st.subheader("📈 암호화폐")
-    with st.spinner("암호화폐 성과 데이��� 계산 중..."):
+    with st.spinner("암호화폐 성과 데이터 계산 중..."):
         crypto_perf = get_perf_table_improved(CRYPTO)
     if not crypto_perf.empty:
         st.dataframe(
@@ -540,12 +772,10 @@ def show_all_performance_tables():
     
     st.subheader("📘 섹터 ETF")
     with st.spinner("섹터 ETF 성과 데이터 계산 중..."):
-        sector_perf = get_perf_table_improved(
-            {name: info['ticker'] for name, info in SECTOR_ETFS.items()}
-        )
+        sector_perf = get_perf_table_improved(SECTOR_ETFS)
     if not sector_perf.empty:
         st.dataframe(
-            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
+            style_perf_table(sector_perf.set_index('���산명'), perf_cols),
             use_container_width=True, height=420
         )
 
@@ -564,13 +794,12 @@ if update_clicked:
 if st.session_state.get('updated', False):
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
-    show_sector_headlines_enhanced()
     
     st.markdown("---")
     
-    # 탭으로 차트 분리
+    # 탭 분리
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["📊 주가지수 차트", "📗 섹터 차트", "📙 스타일 차트", "📰 감정 분석", "📋 상세 정보"]
+        ["📊 주가지수 차트", "📗 섹터 차트", "📙 스타일 차트", "📰 섹터 분석", "📋 정보"]
     )
     
     with tab1:
@@ -613,8 +842,7 @@ if st.session_state.get('updated', False):
         st.session_state["sector_months"] = months_val
         
         with st.spinner("차트 로딩 중..."):
-            sector_tickers = {name: info['ticker'] for name, info in SECTOR_ETFS.items()}
-            norm_df = get_normalized_prices(sector_tickers, months=months_val)
+            norm_df = get_normalized_prices(SECTOR_ETFS, months=months_val)
             fig = go.Figure()
             for col in norm_df.columns:
                 fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
@@ -650,7 +878,7 @@ if st.session_state.get('updated', False):
             st.plotly_chart(fig, use_container_width=True)
     
     with tab4:
-        show_sector_sentiment_analysis()
+        show_sector_analysis()
     
     with tab5:
         st.subheader("📋 계산 기준일")
