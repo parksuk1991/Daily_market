@@ -30,7 +30,7 @@ st.set_page_config(
 col_title, col_img_credit = st.columns([9, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
-    update_clicked = st.button("Update", type="primary", use_container_width=False, key="main_update_btn")
+    update_clicked = st.button("Update", type="primary", width='content', key="main_update_btn")
 with col_img_credit:
     image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg"
     try:
@@ -717,7 +717,7 @@ def show_sector_analysis():
                 'Category': n.get('category', ''),
             } for n in news_list[:10]])
             
-            st.dataframe(news_df, use_container_width=True)
+            st.dataframe(news_df, width='stretch') #width='stretch'
         
         st.markdown("---")
 
@@ -731,7 +731,7 @@ def show_all_performance_tables():
     if not stock_perf.empty:
         st.dataframe(
             style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=490
+            width='stretch', height=490
         )
     
     st.subheader("🗠 채권시장")
@@ -740,7 +740,7 @@ def show_all_performance_tables():
     if not bond_perf.empty:
         st.dataframe(
             style_perf_table(bond_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=385
+            width='stretch', height=385
         )
     
     st.subheader("💱 통화")
@@ -749,7 +749,7 @@ def show_all_performance_tables():
     if not curr_perf.empty:
         st.dataframe(
             style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=315
+            width='stretch', height=315
         )
     
     st.subheader("📈 암호화폐")
@@ -758,7 +758,7 @@ def show_all_performance_tables():
     if not crypto_perf.empty:
         st.dataframe(
             style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=385
+            width='stretch', height=385
         )
     
     st.subheader("📕 스타일 ETF")
@@ -767,7 +767,7 @@ def show_all_performance_tables():
     if not style_perf.empty:
         st.dataframe(
             style_perf_table(style_perf.set_index('자산명'), perf_cols),
-            use_container_width=True, height=245
+            width='stretch', height=245
         )
     
     st.subheader("📘 섹터 ETF")
@@ -776,7 +776,7 @@ def show_all_performance_tables():
     if not sector_perf.empty:
         st.dataframe(
             style_perf_table(sector_perf.set_index('���산명'), perf_cols),
-            use_container_width=True, height=420
+            width='stretch', height=420
         )
 
 # ---- 메인 레이아웃 ----
@@ -825,7 +825,7 @@ if st.session_state.get('updated', False):
                 yaxis_title="100 기준 누적수익률(%)",
                 template="plotly_dark", height=500, legend=dict(orientation='h')
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
     
     with tab2:
         st.subheader("☑️ 섹터 ETF 수익률")
@@ -850,7 +850,7 @@ if st.session_state.get('updated', False):
                 yaxis_title="100 기준 누적수익률(%)",
                 template="plotly_dark", height=500, legend=dict(orientation='h')
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
     
     with tab3:
         st.subheader("☑️ 스타일 ETF 수익률")
@@ -875,7 +875,7 @@ if st.session_state.get('updated', False):
                 yaxis_title="100 기준 누적수익률(%)",
                 template="plotly_dark", height=500, legend=dict(orientation='h')
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
     
     with tab4:
         show_sector_analysis()
