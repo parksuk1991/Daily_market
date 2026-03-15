@@ -13,3 +13,5 @@ beautifulsoup4>=4.12.2
 transformers>=4.40.0
 torch>=2.3.0
 curl-cffi>=0.7.0
+openpyxl>=3.1.0
+lxml>=4.9.0
