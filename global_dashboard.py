@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
-import plotly.express as px
 import requests
 from PIL import Image
 from io import BytesIO
@@ -30,7 +29,7 @@ st.set_page_config(
 col_title, col_img_credit = st.columns([9, 1])
 with col_title:
     st.title("🌐 Global Market Monitoring")
-    update_clicked = st.button("Update", type="primary", width='content', key="main_update_btn")
+    update_clicked = st.button("Update", type="primary", key="main_update_btn")
 with col_img_credit:
     image_url = "https://amateurphotographer.com/wp-content/uploads/sites/7/2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg"
     try:
@@ -61,7 +60,7 @@ STOCK_ETFS = {
     '인도(INDIA, INDA)': 'INDA',
     '영국(UK, EWU)': 'EWU',
     '브라질(Brazil, EWZ)': 'EWZ',
-    '캐나다(Canada, EWC)': 'EWC'
+    '캐나다(Canada, EWC)': 'EWC',
 }
 
 BOND_ETFS = {
@@ -74,7 +73,7 @@ BOND_ETFS = {
     '미국 단기회사채(VCSH)': 'VCSH',
     '글로벌국채(BNDX)': 'BNDX',
     '미국 국채(BND)': 'BND',
-    '단기국채(SPTS)': 'SPTS'
+    '단기국채(SPTS)': 'SPTS',
 }
 
 CURRENCY = {
@@ -85,7 +84,7 @@ CURRENCY = {
     '원-엔': 'JPYKRW=X',
     '달러-유로': 'EURUSD=X',
     '달러-파운드': 'GBPUSD=X',
-    '달러-위안': 'CNY=X'
+    '달러-위안': 'CNY=X',
 }
 
 CRYPTO = {
@@ -107,10 +106,9 @@ STYLE_ETFS = {
     'Momentum (MTUM)': 'MTUM',
     'Quality (QUAL)': 'QUAL',
     'Dividend (VIG)': 'VIG',
-    'Low Volatility (USMV)': 'USMV'
+    'Low Volatility (USMV)': 'USMV',
 }
 
-# ====== 섹터 ETF (동적 holdings 로드) ======
 SECTOR_ETFS = {
     'IT (XLK)': 'XLK',
     '헬스케어 (XLV)': 'XLV',
@@ -122,515 +120,504 @@ SECTOR_ETFS = {
     '필수소비재 (XLP)': 'XLP',
     '자유소비재 (XLY)': 'XLY',
     '유틸리티 (XLU)': 'XLU',
-    '부동산 (XLRE)': 'XLRE'
+    '부동산 (XLRE)': 'XLRE',
 }
 
-# ====== ETF Collector (marketmonitor ��식) ======
+_HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/124.0.0.0 Safari/537.36'
+    ),
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+}
+
+
+# ======================================================
+# ====== ETF Collector (완전 동적 — 4가지 방법 체인) ======
+# ======================================================
 class ETFCollector:
-    """동적 ETF Holdings 수집"""
-    
+    """
+    ETF Top-10 Holdings 수집기.
+    수집 시도 순서:
+      1. SSGA 공식 XLSX  (SPDR 계열 ETF용, State Street 직접 제공)
+      2. stockanalysis.com 스크래핑
+      3. yahooquery
+      4. yfinance fund_top_holdings
+    hardcoding 없음 — 모두 실패 시 빈 리스트 반환.
+    """
+
     def __init__(self):
+        self.cf_session = None
         try:
-            from curl_cffi import requests as cffi_requests
-            self.session = cffi_requests.Session(impersonate="chrome")
-            self.session.verify = False
-        except:
-            self.session = None
-    
-    def get_etf_holdings(self, ticker: str, retry=3):
-        """Top 10 Holdings 동적 로드"""
-        for attempt in range(retry):
-            try:
-                from yahooquery import Ticker
-                
-                if self.session:
-                    etf = Ticker(ticker, session=self.session)
-                else:
-                    etf = Ticker(ticker)
-                
-                holdings = etf.fund_holding_info
-                
-                if ticker in holdings and 'holdings' in holdings[ticker]:
-                    top_holdings = holdings[ticker]['holdings'][:10]
-                    
-                    result = []
-                    for holding in top_holdings:
-                        symbol = holding.get('symbol', '')
-                        weight = holding.get('holdingPercent', 0.0)
-                        
-                        if symbol:
-                            result.append({
-                                'ticker': symbol,
-                                'name': holding.get('holdingName', symbol),
-                                'weight': weight * 100
-                            })
-                    
-                    if result:
-                        return result
-                
-                if attempt < retry - 1:
-                    time.sleep(2)
-            except Exception as e:
-                if attempt < retry - 1:
-                    time.sleep(2)
-                continue
-        
-        return []
-    
-    def get_etf_name(self, ticker: str):
-        """ETF 이름"""
+            from curl_cffi import requests as cffi_req
+            self.cf_session = cffi_req.Session(impersonate="chrome")
+            self.cf_session.verify = False
+        except Exception:
+            pass
+
+    # ── 방법 1 : SSGA 공식 XLSX ─────────────────────────
+    def _try_ssga(self, ticker: str):
+        """
+        State Street (SPDR) 일별 holdings XLSX.
+        URL: https://www.ssga.com/us/en/intermediary/etfs/library-content/
+             products/fund-data/etfs/us/holdings-daily-us-en-{ticker}.xlsx
+        SPDR이 아닌 ETF는 404 → 빠르게 스킵.
+        """
+        url = (
+            "https://www.ssga.com/us/en/intermediary/etfs/library-content/"
+            f"products/fund-data/etfs/us/holdings-daily-us-en-{ticker.lower()}.xlsx"
+        )
+        try:
+            resp = requests.get(url, headers=_HEADERS, timeout=15, verify=False)
+            if resp.status_code != 200:
+                return []
+
+            # SSGA XLSX 구조:
+            #   행 0-3  : 메타데이터
+            #   행 4    : 컬럼 헤더 (Name, Ticker, Identifier, SEDOL, Weight, Sector, ...)
+            #   행 5+   : 실제 종목
+            df = pd.read_excel(BytesIO(resp.content), skiprows=4, engine='openpyxl')
+            if df.empty:
+                return []
+
+            df.columns = [str(c).strip() for c in df.columns]
+
+            ticker_col = next(
+                (c for c in df.columns if 'ticker' in c.lower() or 'symbol' in c.lower()), None
+            )
+            weight_col = next(
+                (c for c in df.columns if 'weight' in c.lower()), None
+            )
+            name_col = next(
+                (c for c in df.columns if 'name' in c.lower()), ticker_col
+            )
+            if not ticker_col or not weight_col:
+                return []
+
+            df = df.dropna(subset=[ticker_col])
+            df[ticker_col] = df[ticker_col].astype(str).str.strip()
+            df = df[df[ticker_col].str.len() > 0]
+            df = df[~df[ticker_col].str.lower().isin(['nan', 'ticker', 'symbol', '-'])]
+            df[weight_col] = pd.to_numeric(df[weight_col], errors='coerce')
+            df = df.dropna(subset=[weight_col])
+            df = df[df[weight_col] > 0]
+            df = df.sort_values(weight_col, ascending=False).head(10)
+
+            return [
+                {
+                    'ticker': str(row[ticker_col]).strip(),
+                    'name':   str(row[name_col]).strip(),
+                    'weight': round(float(row[weight_col]), 2),
+                }
+                for _, row in df.iterrows()
+                if str(row[ticker_col]).strip()
+            ]
+        except Exception:
+            return []
+
+    # ── 방법 2 : stockanalysis.com 스크래핑 ──────────────
+    def _try_stockanalysis(self, ticker: str):
+        """
+        https://stockanalysis.com/etf/{ticker}/holdings/
+        테이블 컬럼: # | Symbol | Company | Weight% | Shares | Revenue%
+        """
+        url = f"https://stockanalysis.com/etf/{ticker.lower()}/holdings/"
+        try:
+            resp = requests.get(url, headers=_HEADERS, timeout=12, verify=False)
+            if resp.status_code != 200:
+                return []
+
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            table = soup.find('table')
+            if not table:
+                return []
+
+            result = []
+            for row in table.find_all('tr')[1:]:   # 헤더 스킵
+                cols = [td.get_text(strip=True) for td in row.find_all('td')]
+                if len(cols) < 4:
+                    continue
+                # cols[0]=rank, cols[1]=symbol, cols[2]=company, cols[3]=weight%
+                sym = cols[1].strip()
+                name = cols[2].strip() if len(cols) > 2 else sym
+                try:
+                    weight = float(cols[3].replace('%', '').replace(',', '').strip())
+                except ValueError:
+                    continue
+                if sym and weight > 0:
+                    result.append({'ticker': sym, 'name': name, 'weight': round(weight, 2)})
+                if len(result) >= 10:
+                    break
+            return result
+        except Exception:
+            return []
+
+    # ── 방법 3 : yahooquery ──────────────────────────────
+    def _try_yahooquery(self, ticker: str):
         try:
             from yahooquery import Ticker
-            
-            if self.session:
-                etf = Ticker(ticker, session=self.session)
-            else:
-                etf = Ticker(ticker)
-            
-            quote_type = etf.quote_type
-            
-            if ticker in quote_type:
-                return quote_type[ticker].get('longName', f'{ticker} ETF')
-            
-            return f'{ticker} ETF'
-        except:
-            return f'{ticker} ETF'
+            etf = Ticker(ticker, session=self.cf_session) if self.cf_session else Ticker(ticker)
+            holdings = etf.fund_holding_info
+            if ticker in holdings and isinstance(holdings[ticker], dict):
+                raw = holdings[ticker].get('holdings', [])
+                result = [
+                    {
+                        'ticker': h.get('symbol', ''),
+                        'name':   h.get('holdingName', h.get('symbol', '')),
+                        'weight': round(h.get('holdingPercent', 0.0) * 100, 2),
+                    }
+                    for h in raw[:10]
+                    if h.get('symbol', '')
+                ]
+                return result
+        except Exception:
+            pass
+        return []
 
-# ====== News Collector (경량 버전) ======
+    # ── 방법 4 : yfinance fund_top_holdings ──────────────
+    def _try_yfinance(self, ticker: str):
+        try:
+            t = yf.Ticker(ticker)
+            df = t.fund_top_holdings
+            if df is None or df.empty:
+                return []
+            result = []
+            for _, row in df.head(10).iterrows():
+                sym  = str(row.get('Symbol',       row.get('symbol', ''))).strip()
+                name = str(row.get('Holding Name', row.get('holdingName', sym))).strip()
+                pct  = float(row.get('% Assets',   row.get('holdingPercent', 0)) or 0)
+                if pct < 1:        # yfinance가 0~1 범위로 반환하는 경우
+                    pct *= 100
+                if sym and sym != 'nan':
+                    result.append({'ticker': sym, 'name': name, 'weight': round(pct, 2)})
+            return result
+        except Exception:
+            return []
+
+    # ── 공개 API ──────────────────────────────────────────
+    def get_etf_holdings(self, ticker: str, retry: int = 2):
+        """
+        4가지 방법 순서대로 시도.
+        하나라도 성공하면 즉시 반환, 모두 실패하면 빈 리스트.
+        """
+        result = self._try_ssga(ticker)
+        if result:
+            return result
+
+        result = self._try_stockanalysis(ticker)
+        if result:
+            return result
+
+        for attempt in range(retry):
+            result = self._try_yahooquery(ticker)
+            if result:
+                return result
+            if attempt < retry - 1:
+                time.sleep(1.5)
+
+        return self._try_yfinance(ticker)
+
+    def get_etf_name(self, ticker: str):
+        try:
+            from yahooquery import Ticker
+            etf = Ticker(ticker, session=self.cf_session) if self.cf_session else Ticker(ticker)
+            qt = etf.quote_type
+            if ticker in qt:
+                return qt[ticker].get('longName', f'{ticker} ETF')
+        except Exception:
+            pass
+        return f'{ticker} ETF'
+
+
+# ====== News Collector ======
 class NewsCollector:
     """Yahoo RSS 기반 뉴스 수집"""
-    
+
     def __init__(self, days=3):
         self.days = days
         self.cutoff_date = datetime.now() - timedelta(days=days)
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-    
+
     def extract_content(self, url: str):
-        """본문 추출"""
         try:
-            response = requests.get(url, headers=self.headers, timeout=8)
-            if response.status_code != 200:
+            resp = requests.get(url, headers=_HEADERS, timeout=8)
+            if resp.status_code != 200:
                 return ""
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
+            soup = BeautifulSoup(resp.text, 'html.parser')
             for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
                 tag.decompose()
-            
-            paragraphs = soup.find_all('p')
-            texts = [p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 30]
-            
-            full_text = ' '.join(texts)
-            
-            return full_text[:5000] if full_text else ""
-        except:
+            texts = [
+                p.get_text(strip=True)
+                for p in soup.find_all('p')
+                if len(p.get_text(strip=True)) > 30
+            ]
+            full = ' '.join(texts)
+            return full[:5000] if full else ""
+        except Exception:
             return ""
-    
+
     def is_valid_content(self, content: str):
-        """Paywall 체크"""
         if not content or len(content) < 200:
             return False
-        
-        paywall_words = ['sign in', 'log in', 'subscribe', 'register']
-        content_lower = content.lower()
-        
-        for word in paywall_words:
-            if word in content_lower[:500]:
-                return False
-        
-        return True
-    
+        lower = content.lower()
+        return not any(w in lower[:500] for w in ['sign in', 'log in', 'subscribe', 'register'])
+
     def create_summary(self, text: str):
-        """추출식 요약"""
         if not text or len(text) < 20:
             return ""
-        
         sentences = re.split(r'[.!?]\s+', text)
-        
-        summary_sentences = []
-        total_len = 0
-        
-        for sentence in sentences[:5]:
-            sentence = sentence.strip()
-            if len(sentence) > 20:
-                summary_sentences.append(sentence)
-                total_len += len(sentence)
-                
-                if total_len >= 300:
+        parts, total = [], 0
+        for s in sentences[:5]:
+            s = s.strip()
+            if len(s) > 20:
+                parts.append(s)
+                total += len(s)
+                if total >= 300:
                     break
-        
-        summary = '. '.join(summary_sentences)
-        
-        if len(summary) > 300:
-            summary = summary[:300] + '...'
-        
-        return summary if summary else text[:300] + '...'
-    
+        summary = '. '.join(parts)
+        return (summary[:300] + '...') if len(summary) > 300 else (summary or text[:300] + '...')
+
     def collect_yahoo_rss(self, ticker: str):
-        """Yahoo Finance RSS"""
         try:
-            url = f"https://finance.yahoo.com/rss/headline?s={ticker}"
-            feed = feedparser.parse(url)
-            
+            feed = feedparser.parse(f"https://finance.yahoo.com/rss/headline?s={ticker}")
             news = []
             for entry in feed.entries[:3]:
                 try:
-                    pub_date = entry.get('published_parsed')
-                    if pub_date:
-                        pub_dt = datetime(*pub_date[:6])
+                    pub = entry.get('published_parsed')
+                    if pub:
+                        pub_dt = datetime(*pub[:6])
                         if pub_dt < self.cutoff_date:
                             continue
                         date_str = pub_dt.strftime('%Y-%m-%d')
                     else:
                         date_str = datetime.now().strftime('%Y-%m-%d')
-                    
-                    title = entry.get('title', '')
-                    article_url = entry.get('link', '')
-                    summary = entry.get('summary', '')
-                    
-                    content = self.extract_content(article_url)
-                    
+                    content = self.extract_content(entry.get('link', ''))
                     if not self.is_valid_content(content):
                         continue
-                    
-                    highlights = self.create_summary(content)
-                    
                     news.append({
-                        'ticker': ticker,
-                        'title': title,
-                        'url': article_url,
+                        'ticker':       ticker,
+                        'title':        entry.get('title', ''),
+                        'url':          entry.get('link', ''),
                         'published_at': date_str,
-                        'summary': summary[:300],
-                        'content': content,
-                        'highlights': highlights,
-                        'source': 'Yahoo Finance'
+                        'summary':      entry.get('summary', '')[:300],
+                        'content':      content,
+                        'highlights':   self.create_summary(content),
+                        'source':       'Yahoo Finance',
                     })
-                except:
+                except Exception:
                     continue
-            
             return news
-        except:
+        except Exception:
             return []
-    
+
     def collect_for_ticker(self, ticker: str, company: str):
-        """티커별 뉴스"""
-        all_news = []
-        
-        yahoo_news = self.collect_yahoo_rss(ticker)
-        all_news.extend(yahoo_news)
-        
-        for item in all_news:
+        news = self.collect_yahoo_rss(ticker)
+        for item in news:
             item['company_name'] = company
-        
-        return all_news
-    
+        return news
+
     def collect_all(self, holdings, etf_ticker: str):
-        """전체 수집"""
         all_news = []
-        
-        for idx, holding in enumerate(holdings):
-            ticker = holding['ticker']
-            company = holding['name']
-            
-            news = self.collect_for_ticker(ticker, company)
-            
+        for holding in holdings:
+            news = self.collect_for_ticker(holding['ticker'], holding['name'])
             for item in news:
-                item['etf'] = etf_ticker
+                item['etf']    = etf_ticker
                 item['weight'] = holding['weight']
-            
             all_news.extend(news)
             time.sleep(0.3)
-        
         return all_news
 
-# ====== Sentiment Analyzer (FinBERT 경량 버전) ======
+
+# ====== FinBERT Analyzer ======
 class FinBERTAnalyzer:
-    """경량 FinBERT"""
-    
     def __init__(self):
         self.pipe = None
-        self._initialize()
-    
-    def _initialize(self):
-        """모델 로드"""
         try:
-            from transformers import pipeline
-            self.pipe = pipeline(
+            from transformers import pipeline as hf_pipeline
+            self.pipe = hf_pipeline(
                 "text-classification",
                 model="ProsusAI/finbert",
                 device=-1,
                 max_length=512,
-                truncation=True
+                truncation=True,
             )
-        except Exception as e:
-            self.pipe = None
-    
+        except Exception:
+            pass
+
     def analyze_chunk(self, text: str):
-        """단일 청크 분석"""
         if not self.pipe or not text or len(text) < 10:
             return 0.0
-        
         try:
             text = re.sub(r'<[^>]+>', '', text)
             text = re.sub(r'http\S+', '', text)
             text = re.sub(r'\s+', ' ', text).strip()
-            
-            result = self.pipe(text[:512])[0]
-            
-            label = result['label']
-            score = result['score']
-            
-            if label == 'positive':
-                return score
-            elif label == 'negative':
-                return -score
-            else:
-                return 0.0
-        except:
+            res   = self.pipe(text[:512])[0]
+            label, score = res['label'], res['score']
+            return score if label == 'positive' else (-score if label == 'negative' else 0.0)
+        except Exception:
             return 0.0
-    
+
     def analyze_text(self, text: str):
-        """텍스트 분석 (최대 3개 청크)"""
         if not text or len(text) < 100:
             return 0.0
-        
-        chunk_size = 1000
-        
-        chunks = []
-        for i in range(0, min(len(text), 3000), chunk_size):
-            chunk = text[i:i+chunk_size]
-            if len(chunk) > 100:
-                chunks.append(chunk)
-        
-        scores = []
-        for chunk in chunks[:3]:
-            score = self.analyze_chunk(chunk)
-            if score != 0.0:
-                scores.append(score)
-        
-        if scores:
-            return sum(scores) / len(scores)
-        
-        return 0.0
-    
+        chunks = [
+            text[i:i+1000]
+            for i in range(0, min(len(text), 3000), 1000)
+            if len(text[i:i+1000]) > 100
+        ]
+        scores = [s for s in (self.analyze_chunk(c) for c in chunks[:3]) if s != 0.0]
+        return sum(scores) / len(scores) if scores else 0.0
+
     def categorize(self, title: str):
-        """카테고리"""
-        title_lower = title.lower()
-        
-        if any(w in title_lower for w in ['earnings', 'revenue', 'profit']):
-            return 'Earnings'
-        elif any(w in title_lower for w in ['merger', 'acquisition', 'deal']):
-            return 'M&A'
-        elif any(w in title_lower for w in ['product', 'launch']):
-            return 'Product'
-        elif any(w in title_lower for w in ['regulation', 'lawsuit']):
-            return 'Regulatory'
-        elif any(w in title_lower for w in ['analyst', 'upgrade', 'downgrade']):
-            return 'Analyst'
-        else:
-            return 'General'
-    
+        t = title.lower()
+        if any(w in t for w in ['earnings', 'revenue', 'profit']):   return 'Earnings'
+        if any(w in t for w in ['merger', 'acquisition', 'deal']):   return 'M&A'
+        if any(w in t for w in ['product', 'launch']):               return 'Product'
+        if any(w in t for w in ['regulation', 'lawsuit']):           return 'Regulatory'
+        if any(w in t for w in ['analyst', 'upgrade', 'downgrade']): return 'Analyst'
+        return 'General'
+
     def analyze_news(self, news: dict):
-        """뉴스 분석"""
-        content = news.get('content', '')
-        
-        if not content or len(content) < 100:
+        if len(news.get('content', '')) < 100:
             return None
-        
-        sentiment = self.analyze_text(content)
-        
-        news['sentiment_score'] = round(sentiment, 4)
-        news['category'] = self.categorize(news.get('title', ''))
-        
+        news['sentiment_score'] = round(self.analyze_text(news['content']), 4)
+        news['category']        = self.categorize(news.get('title', ''))
         return news
-    
+
     def batch_analyze(self, news_list: list):
-        """일괄 분석"""
-        analyzed = []
-        
-        for idx, news in enumerate(news_list):
-            if (idx + 1) % 5 == 0:
-                print(f"  분석: {idx + 1}/{len(news_list)}")
-            
-            result = self.analyze_news(news)
-            if result:
-                analyzed.append(result)
-        
-        return analyzed
+        return [r for r in (self.analyze_news(n) for n in news_list) if r]
+
 
 # ---- 주요 데이터 함수 ----
 def get_perf_table_improved(label2ticker, ref_date=None):
-    """성과 테이블 생성"""
     tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
-    start = ref_date - timedelta(days=4*365)
-    end = ref_date + timedelta(days=1)
-    
+    start = ref_date - timedelta(days=4 * 365)
+    end   = ref_date + timedelta(days=1)
+
     try:
         df = yf.download(tickers, start=start, end=end, progress=False)['Close']
         if isinstance(df, pd.Series):
             df = df.to_frame()
-        df = df.ffill().dropna(how='all')
-        df = df[tickers]
-    except Exception as e:
+        df = df.ffill().dropna(how='all')[tickers]
+    except Exception:
         return pd.DataFrame()
-    
+
     if df.empty:
         return pd.DataFrame()
-    
-    available_dates = df.index[df.index.date <= ref_date]
-    if len(available_dates) == 0:
+
+    avail      = df.index[df.index.date <= ref_date]
+    if len(avail) == 0:
         return pd.DataFrame()
-    
-    last_trade_date = available_dates[-1].date()
-    last_idx = available_dates[-1]
-    
+    last_trade = avail[-1].date()
+    last_idx   = avail[-1]
+
     periods = {
-        '1D(%)': {'days': 1, 'type': 'business'},
-        '1W(%)': {'days': 5, 'type': 'business'}, 
+        '1D(%)':  {'days': 1,   'type': 'business'},
+        '1W(%)':  {'days': 5,   'type': 'business'},
         'MTD(%)': {'type': 'month_start'},
-        '1M(%)': {'days': 21, 'type': 'business'},
-        '3M(%)': {'days': 63, 'type': 'business'},
-        '6M(%)': {'days': 126, 'type': 'business'},
+        '1M(%)':  {'days': 21,  'type': 'business'},
+        '3M(%)':  {'days': 63,  'type': 'business'},
+        '6M(%)':  {'days': 126, 'type': 'business'},
         'YTD(%)': {'type': 'year_start'},
-        '1Y(%)': {'days': 252, 'type': 'business'},
-        '3Y(%)': {'days': 756, 'type': 'business'}
+        '1Y(%)':  {'days': 252, 'type': 'business'},
+        '3Y(%)':  {'days': 756, 'type': 'business'},
     }
-    
+
     results = []
     for label, ticker in label2ticker.items():
-        row = {'자산명': label}
+        row    = {'자산명': label}
         series = df[ticker].dropna()
         if last_idx not in series.index or len(series) == 0:
             row['현재값'] = np.nan
-            for period_key in periods.keys():
-                row[period_key] = np.nan
+            for pk in periods: row[pk] = np.nan
             results.append(row)
             continue
-        
-        curr_val = series.loc[last_idx]
-        row['현재값'] = curr_val
-        
-        for period_key, period_config in periods.items():
-            base_val = None
+
+        curr        = series.loc[last_idx]
+        row['현재값'] = curr
+
+        for pk, cfg in periods.items():
+            base = None
             try:
-                if period_config['type'] == 'month_start':
-                    month_start = last_trade_date.replace(day=1)
-                    month_data = series[series.index.date >= month_start]
-                    if len(month_data) > 0:
-                        base_val = month_data.iloc[0]
-                elif period_config['type'] == 'year_start':
-                    year_start = last_trade_date.replace(month=1, day=1)
-                    year_data = series[series.index.date >= year_start]
-                    if len(year_data) > 0:
-                        base_val = year_data.iloc[0]
-                elif period_config['type'] == 'business':
-                    current_idx = series.index.get_loc(last_idx)
-                    lookback_days = period_config['days']
-                    if current_idx >= lookback_days:
-                        base_val = series.iloc[current_idx - lookback_days]
-                    elif current_idx > 0:
-                        base_val = series.iloc[0]
-                
-                if base_val is not None and not np.isnan(base_val) and base_val != 0:
-                    return_pct = (curr_val / base_val - 1) * 100
-                    row[period_key] = return_pct
+                if cfg['type'] == 'month_start':
+                    d = series[series.index.date >= last_trade.replace(day=1)]
+                    base = d.iloc[0] if len(d) else None
+                elif cfg['type'] == 'year_start':
+                    d = series[series.index.date >= last_trade.replace(month=1, day=1)]
+                    base = d.iloc[0] if len(d) else None
                 else:
-                    row[period_key] = np.nan
+                    ci   = series.index.get_loc(last_idx)
+                    lb   = cfg['days']
+                    base = series.iloc[ci - lb] if ci >= lb else (series.iloc[0] if ci > 0 else None)
+                row[pk] = (curr / base - 1) * 100 if (base is not None and not np.isnan(base) and base != 0) else np.nan
             except Exception:
-                row[period_key] = np.nan
-        
+                row[pk] = np.nan
         results.append(row)
-    
-    df_result = pd.DataFrame(results)
-    if '현재값' in df_result.columns:
-        df_result['현재값'] = df_result['현재값'].apply(
-            lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A"
-        )
-    return df_result
+
+    df_r = pd.DataFrame(results)
+    if '현재값' in df_r.columns:
+        df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
+    return df_r
+
 
 def get_sample_calculation_dates(label2ticker, ref_date=None):
-    """계산 기준일"""
     if ref_date is None:
         ref_date = datetime.now().date()
     sample_ticker = list(label2ticker.values())[0]
-    sample_label = list(label2ticker.keys())[0]
-    start = ref_date - timedelta(days=4*365)
-    end = ref_date + timedelta(days=1)
-    
+    sample_label  = list(label2ticker.keys())[0]
     try:
-        data = yf.download(sample_ticker, start=start, end=end, progress=False)['Close']
-        data = data.dropna()
-        available_dates = data.index[data.index.date <= ref_date]
-        if len(available_dates) == 0:
+        data  = yf.download(
+            sample_ticker,
+            start=ref_date - timedelta(days=4 * 365),
+            end=ref_date + timedelta(days=1),
+            progress=False,
+        )['Close'].dropna()
+        avail = data.index[data.index.date <= ref_date]
+        if len(avail) == 0:
             return None, None, None
-        
-        last_trade_date = available_dates[-1].date()
-        current_idx = data.index.get_loc(available_dates[-1])
-        actual_dates = {}
-        periods_check = {'1D': 1, '1W': 5, '1M': 21, '3M': 63, '6M': 126, '1Y': 252, '3Y': 756}
-        
-        for period, days in periods_check.items():
-            if current_idx >= days:
-                base_date = data.index[current_idx - days].date()
-                actual_dates[period] = base_date.strftime('%Y-%m-%d')
-            else:
-                actual_dates[period] = f"데이터 부족 ({current_idx+1}/{days}일)"
-        
-        month_start = last_trade_date.replace(day=1)
-        year_start = last_trade_date.replace(month=1, day=1)
-        mtd_data = data[data.index.date >= month_start]
-        ytd_data = data[data.index.date >= year_start]
-        
-        if len(mtd_data) > 0:
-            actual_dates['MTD'] = mtd_data.index[0].date().strftime('%Y-%m-%d')
-        if len(ytd_data) > 0:
-            actual_dates['YTD'] = ytd_data.index[0].date().strftime('%Y-%m-%d')
-        
-        return sample_label, last_trade_date.strftime('%Y-%m-%d'), actual_dates
+        last_trade = avail[-1].date()
+        ci         = data.index.get_loc(avail[-1])
+        actual     = {}
+        for p, d in {'1D': 1, '1W': 5, '1M': 21, '3M': 63, '6M': 126, '1Y': 252, '3Y': 756}.items():
+            actual[p] = data.index[ci - d].date().strftime('%Y-%m-%d') if ci >= d else "데이터 부족"
+        for key, dt in [('MTD', last_trade.replace(day=1)), ('YTD', last_trade.replace(month=1, day=1))]:
+            d = data[data.index.date >= dt]
+            if len(d): actual[key] = d.index[0].date().strftime('%Y-%m-%d')
+        return sample_label, last_trade.strftime('%Y-%m-%d'), actual
     except Exception:
         return None, None, None
 
+
 @st.cache_data(show_spinner="차트 데이터 로딩 중...")
 def get_normalized_prices(label2ticker, months=6):
-    """정규화된 가격"""
     tickers = list(label2ticker.values())
-    end = datetime.now().date()
-    start = end - timedelta(days=months*31)
-    df = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
+    end     = datetime.now().date()
+    start   = end - timedelta(days=months * 31)
+    df      = yf.download(tickers, start=start, end=end + timedelta(days=1), progress=False)['Close']
     if isinstance(df, pd.Series):
         df = df.to_frame()
-    df = df.ffill()
-    df = df[tickers]
-    norm_df = df / df.iloc[0] * 100
-    norm_df.columns = [k for k in label2ticker]
-    return norm_df
+    df   = df.ffill()[tickers]
+    norm = df / df.iloc[0] * 100
+    norm.columns = list(label2ticker.keys())
+    return norm
+
 
 def format_percentage(val):
-    if pd.isna(val):
-        return "N/A"
-    try:
-        if isinstance(val, (int, float)):
-            return f"{val:.2f}%"
-    except:
-        return "N/A"
+    if pd.isna(val): return "N/A"
+    try:    return f"{float(val):.2f}%"
+    except: return "N/A"
+
 
 def colorize_return(val):
-    if pd.isna(val):
-        return ""
+    if pd.isna(val): return ""
     try:
-        v = float(val) if isinstance(val, (int, float)) else float(str(val).replace('%','').replace(' ',''))
-    except (ValueError, TypeError):
-        return ""
-    if v > 0:
-        return "color: red;"
-    elif v < 0:
-        return "color: blue;"
-    else:
-        return ""
+        v = float(val) if isinstance(val, (int, float)) else float(str(val).replace('%', '').strip())
+    except: return ""
+    return "color: red;" if v > 0 else ("color: blue;" if v < 0 else "")
+
 
 def style_perf_table(df, perf_cols):
     styled = df.style
@@ -639,154 +626,94 @@ def style_perf_table(df, perf_cols):
             styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
     return styled
 
-# ====== 섹터 분석 (marketmonitor 방식) ======
+
+# ====== 섹터 분석 ======
 @st.cache_resource
 def load_analyzer():
     return FinBERTAnalyzer()
 
+
 def run_sector_etf_analysis(etf_ticker: str, etf_name: str):
     """단일 섹터 ETF 분석"""
     try:
-        # Holdings
         collector = ETFCollector()
-        holdings = collector.get_etf_holdings(etf_ticker)
-        
+        holdings  = collector.get_etf_holdings(etf_ticker)
         if not holdings:
-            return None, f"❌ {etf_name}: Holdings 없음"
-        
-        # 뉴스 수집
-        news_collector = NewsCollector(days=3)
-        all_news = news_collector.collect_all(holdings, etf_ticker)
-        
+            return None, f"❌ {etf_name}: Holdings 수집 실패 (4가지 방법 모두 실패)"
+
+        all_news = NewsCollector(days=3).collect_all(holdings, etf_ticker)
         if not all_news:
-            return holdings, f"⚠️ {etf_name}: 뉴스 없음"
-        
-        # 감정 분석
-        analyzer = load_analyzer()
-        analyzed = analyzer.batch_analyze(all_news)
-        
+            return holdings, f"⚠️ {etf_name}: Holdings {len(holdings)}개 확인, 최근 뉴스 없음"
+
+        analyzed = load_analyzer().batch_analyze(all_news)
         return analyzed, None
-    
     except Exception as e:
-        return None, f"❌ {etf_name}: {str(e)[:50]}"
+        return None, f"❌ {etf_name}: {str(e)[:80]}"
+
 
 def show_sector_analysis():
-    """섹터 분석"""
     st.subheader("📰 섹터별 주요 종목 뉴스 & 감정 분석")
-    
     sector_results = {}
-    
+
     for sector_name, etf_ticker in SECTOR_ETFS.items():
         try:
             with st.spinner(f"{sector_name} 분석 중..."):
                 analyzed_news, error = run_sector_etf_analysis(etf_ticker, sector_name)
-                
                 if error:
                     st.warning(error)
                 elif analyzed_news:
                     sector_results[sector_name] = analyzed_news
-        except Exception as e:
+        except Exception:
             st.warning(f"❌ {sector_name}: 오류 발생")
-    
+
     if not sector_results:
         st.warning("섹터 분석 데이터를 가져올 수 없습니다.")
         return
-    
-    # 섹터별 표시
+
     for sector_name, news_list in sector_results.items():
         st.markdown(f"#### {sector_name}")
-        
-        if news_list:
-            # 메트릭
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("뉴스 개수", len(news_list))
-            with col2:
-                avg_sentiment = np.mean([n.get('sentiment_score', 0) for n in news_list])
-                st.metric("평균 감정", f"{avg_sentiment:.3f}")
-            with col3:
-                positive_count = sum(1 for n in news_list if n.get('sentiment_score', 0) > 0.1)
-                st.metric("긍정 뉴스", f"{positive_count}/{len(news_list)}")
-            
-            # 상세 데이터
-            news_df = pd.DataFrame([{
-                'Ticker': n.get('ticker', ''),
-                'Title': n.get('title', '')[:80],
-                'Date': n.get('published_at', ''),
-                'Sentiment': round(n.get('sentiment_score', 0), 3),
-                'Category': n.get('category', ''),
-            } for n in news_list[:10]])
-            
-            st.dataframe(news_df, width='stretch') #width='stretch'
-        
+        c1, c2, c3 = st.columns(3)
+        with c1: st.metric("뉴스 개수", len(news_list))
+        with c2:
+            avg_s = np.mean([n.get('sentiment_score', 0) for n in news_list])
+            st.metric("평균 감정", f"{avg_s:.3f}")
+        with c3:
+            pos = sum(1 for n in news_list if n.get('sentiment_score', 0) > 0.1)
+            st.metric("긍정 뉴스", f"{pos}/{len(news_list)}")
+
+        news_df = pd.DataFrame([{
+            'Ticker':    n.get('ticker', ''),
+            'Title':     n.get('title', '')[:80],
+            'Date':      n.get('published_at', ''),
+            'Sentiment': round(n.get('sentiment_score', 0), 3),
+            'Category':  n.get('category', ''),
+        } for n in news_list[:10]])
+        st.dataframe(news_df, use_container_width=True)
         st.markdown("---")
 
+
 def show_all_performance_tables():
-    """성과 테이블"""
-    perf_cols = ['1D(%)','1W(%)','MTD(%)','1M(%)','3M(%)','6M(%)','YTD(%)','1Y(%)','3Y(%)']
-    
-    st.subheader("📊 주식시장")
-    with st.spinner("주식시장 성과 데이터 계산 중..."):
-        stock_perf = get_perf_table_improved(STOCK_ETFS)
-    if not stock_perf.empty:
-        st.dataframe(
-            style_perf_table(stock_perf.set_index('자산명'), perf_cols),
-            width='stretch', height=490
-        )
-    
-    st.subheader("🗠 채권시장")
-    with st.spinner("채권시장 성과 데이터 계산 중..."):
-        bond_perf = get_perf_table_improved(BOND_ETFS)
-    if not bond_perf.empty:
-        st.dataframe(
-            style_perf_table(bond_perf.set_index('자산명'), perf_cols),
-            width='stretch', height=385
-        )
-    
-    st.subheader("💱 통화")
-    with st.spinner("통화 성과 데이터 계산 중..."):
-        curr_perf = get_perf_table_improved(CURRENCY)
-    if not curr_perf.empty:
-        st.dataframe(
-            style_perf_table(curr_perf.set_index('자산명'), perf_cols),
-            width='stretch', height=315
-        )
-    
-    st.subheader("📈 암호화폐")
-    with st.spinner("암호화폐 성과 데이터 계산 중..."):
-        crypto_perf = get_perf_table_improved(CRYPTO)
-    if not crypto_perf.empty:
-        st.dataframe(
-            style_perf_table(crypto_perf.set_index('자산명'), perf_cols),
-            width='stretch', height=385
-        )
-    
-    st.subheader("📕 스타일 ETF")
-    with st.spinner("스타일 ETF 성과 데이터 계산 중..."):
-        style_perf = get_perf_table_improved(STYLE_ETFS)
-    if not style_perf.empty:
-        st.dataframe(
-            style_perf_table(style_perf.set_index('자산명'), perf_cols),
-            width='stretch', height=245
-        )
-    
-    st.subheader("📘 섹터 ETF")
-    with st.spinner("섹터 ETF 성과 데이터 계산 중..."):
-        sector_perf = get_perf_table_improved(SECTOR_ETFS)
-    if not sector_perf.empty:
-        st.dataframe(
-            style_perf_table(sector_perf.set_index('자산명'), perf_cols),
-            width='stretch', height=420
-        )
+    perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
+    for title, label2t, h in [
+        ("📊 주식시장",   STOCK_ETFS,  490),
+        ("🗠 채권시장",   BOND_ETFS,   385),
+        ("💱 통화",       CURRENCY,    315),
+        ("📈 암호화폐",   CRYPTO,      385),
+        ("📕 스타일 ETF", STYLE_ETFS,  245),
+        ("📘 섹터 ETF",   SECTOR_ETFS, 420),
+    ]:
+        st.subheader(title)
+        with st.spinner(f"{title} 계산 중..."):
+            perf = get_perf_table_improved(label2t)
+        if not perf.empty:
+            st.dataframe(
+                style_perf_table(perf.set_index('자산명'), perf_cols),
+                use_container_width=True, height=h,
+            )
+
 
 # ---- 메인 레이아웃 ----
-period_options = {
-    "3개월": 3,
-    "6개월": 6,
-    "12개월": 12,
-    "24개월": 24,
-    "36개월": 36,
-}
+period_options = {"3개월": 3, "6개월": 6, "12개월": 12, "24개월": 24, "36개월": 36}
 
 if update_clicked:
     st.session_state['updated'] = True
@@ -794,101 +721,59 @@ if update_clicked:
 if st.session_state.get('updated', False):
     st.markdown("<br>", unsafe_allow_html=True)
     show_all_performance_tables()
-    
     st.markdown("---")
-    
-    # 탭 분리
+
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         ["📊 주가지수 차트", "📗 섹터 차트", "📙 스타일 차트", "📰 섹터 분석", "📋 정보"]
     )
-    
+
+    def render_chart(label2t, session_key, select_key):
+        if session_key not in st.session_state:
+            st.session_state[session_key] = 6
+        months = st.selectbox(
+            "기간 선택",
+            options=list(period_options.keys()),
+            index=list(period_options.values()).index(st.session_state[session_key]),
+            key=select_key,
+        )
+        mv = period_options[months]
+        st.session_state[session_key] = mv
+        with st.spinner("차트 로딩 중..."):
+            norm = get_normalized_prices(label2t, months=mv)
+            fig  = go.Figure()
+            for col in norm.columns:
+                fig.add_trace(go.Scatter(x=norm.index, y=norm[col], mode='lines', name=col))
+            fig.update_layout(
+                yaxis_title="100 기준 누적수익률(%)",
+                template="plotly_dark", height=500,
+                legend=dict(orientation='h'),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
     with tab1:
         st.subheader("✅ 주요 주가지수 수익률")
-        if "idx_months" not in st.session_state:
-            st.session_state["idx_months"] = 6
-        
-        months = st.selectbox(
-            "기간 선택", 
-            options=list(period_options.keys()),
-            index=list(period_options.values()).index(st.session_state["idx_months"]),
-            key="idx_selectbox"
-        )
-        months_val = period_options[months]
-        st.session_state["idx_months"] = months_val
-        
-        with st.spinner("차트 로딩 중..."):
-            norm_df = get_normalized_prices(STOCK_ETFS, months=months_val)
-            fig = go.Figure()
-            for col in norm_df.columns:
-                fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
-            fig.update_layout(
-                yaxis_title="100 기준 누적수익률(%)",
-                template="plotly_dark", height=500, legend=dict(orientation='h')
-            )
-            st.plotly_chart(fig, width='stretch')
-    
+        render_chart(STOCK_ETFS, "idx_months", "idx_selectbox")
+
     with tab2:
         st.subheader("☑️ 섹터 ETF 수익률")
-        if "sector_months" not in st.session_state:
-            st.session_state["sector_months"] = 6
-        
-        months = st.selectbox(
-            "기간 선택", 
-            options=list(period_options.keys()),
-            index=list(period_options.values()).index(st.session_state["sector_months"]),
-            key="sector_selectbox"
-        )
-        months_val = period_options[months]
-        st.session_state["sector_months"] = months_val
-        
-        with st.spinner("차트 로딩 중..."):
-            norm_df = get_normalized_prices(SECTOR_ETFS, months=months_val)
-            fig = go.Figure()
-            for col in norm_df.columns:
-                fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
-            fig.update_layout(
-                yaxis_title="100 기준 누적수익률(%)",
-                template="plotly_dark", height=500, legend=dict(orientation='h')
-            )
-            st.plotly_chart(fig, width='stretch')
-    
+        render_chart(SECTOR_ETFS, "sector_months", "sector_selectbox")
+
     with tab3:
         st.subheader("☑️ 스타일 ETF 수익률")
-        if "style_months" not in st.session_state:
-            st.session_state["style_months"] = 6
-        
-        months = st.selectbox(
-            "기간 선택", 
-            options=list(period_options.keys()),
-            index=list(period_options.values()).index(st.session_state["style_months"]),
-            key="style_selectbox"
-        )
-        months_val = period_options[months]
-        st.session_state["style_months"] = months_val
-        
-        with st.spinner("차트 로딩 중..."):
-            norm_df = get_normalized_prices(STYLE_ETFS, months=months_val)
-            fig = go.Figure()
-            for col in norm_df.columns:
-                fig.add_trace(go.Scatter(x=norm_df.index, y=norm_df[col], mode='lines', name=col))
-            fig.update_layout(
-                yaxis_title="100 기준 누적수익률(%)",
-                template="plotly_dark", height=500, legend=dict(orientation='h')
-            )
-            st.plotly_chart(fig, width='stretch')
-    
+        render_chart(STYLE_ETFS, "style_months", "style_selectbox")
+
     with tab4:
         show_sector_analysis()
-    
+
     with tab5:
         st.subheader("📋 계산 기준일")
         sample_label, last_date, actual_dates = get_sample_calculation_dates(STOCK_ETFS)
         if sample_label and actual_dates:
             st.caption(f"**샘플 자산:** {sample_label} | **최근 거래일:** {last_date}")
-            periods_line1 = [f"{period}: {actual_dates[period]}" for period in ['1D', '1W', 'MTD', '1M'] if period in actual_dates]
-            st.caption("• " + " | ".join(periods_line1))
-            periods_line2 = [f"{period}: {actual_dates[period]}" for period in ['3M', '6M', 'YTD', '1Y', '3Y'] if period in actual_dates]
-            st.caption("• " + " | ".join(periods_line2))
+            l1 = [f"{p}: {actual_dates[p]}" for p in ['1D', '1W', 'MTD', '1M'] if p in actual_dates]
+            st.caption("• " + " | ".join(l1))
+            l2 = [f"{p}: {actual_dates[p]}" for p in ['3M', '6M', 'YTD', '1Y', '3Y'] if p in actual_dates]
+            st.caption("• " + " | ".join(l2))
 
 else:
     st.info("상단 'Update' 버튼을 눌러주세요.")
