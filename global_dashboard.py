@@ -786,9 +786,6 @@ def show_page1():
             st.image(Image.open(BytesIO(resp.content)), width=150)
         except Exception:
             pass
-        st.markdown('<div style="font-size:0.85rem;">Data: '
-                    '<a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a></div>',
-                    unsafe_allow_html=True)
 
     if update_clicked:
         st.session_state['p1_updated'] = True
