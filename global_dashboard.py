@@ -907,12 +907,12 @@ def show_page1():
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
 
     for title, label2t, h in [
-        ("📊 Equity", STOCK_ETFS, 485),
+        ("📊 Equity", STOCK_ETFS, 489),
         ("🗠 Bond", BOND_ETFS, 385),
-        ("💱 Currency", CURRENCY, 285),
-        ("📈 Crypto", CRYPTO, 410),
-        ("📕 Style ETF", STYLE_ETFS, 270),
-        ("📘 Sector ETF", SECTOR_ETFS, 450),
+        ("💱 Currency", CURRENCY, 284),
+        ("📈 Crypto", CRYPTO, 400),
+        ("📕 Style ETF", STYLE_ETFS, 260),
+        ("📘 Sector ETF", SECTOR_ETFS, 435),
     ]:
         st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
