@@ -834,7 +834,7 @@ def show_page2():
 
     col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
     with col1:
-        selected = st.selectbox("분석할 섹터 선택", list(SECTOR_ETFS.keys()), key="p2_sector")
+        selected = st.selectbox("섹터 선택", list(SECTOR_ETFS.keys()), key="p2_sector")
     with col2:
         run_btn = st.button("📡 분석 시작", type="primary", use_container_width=True, key="p2_run")
 
