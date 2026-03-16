@@ -5,7 +5,6 @@ import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
 import requests
 from PIL import Image
 from io import BytesIO
@@ -37,7 +36,7 @@ BOND_ETFS = {
     '신흥국채(EMB)': 'EMB', '미국 하이일드(HYG)': 'HYG', '미국 물가연동(TIP)': 'TIP',
     '미국 단기회사채(VCSH)': 'VCSH', '글로벌국채(BNDX)': 'BNDX', '미국 국채(BND)': 'BND',
     '단기국채(SPTS)': 'SPTS',
-}
+} #'달러인덱스': 'DX-Y.NYB', 일단 제외했는데 데이터 왜 못 불러오는지 확인 필요
 CURRENCY = { 
     '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
     '달러-엔': 'JPY=X', '원-엔': 'JPYKRW=X', '달러-유로': 'EURUSD=X',
@@ -538,7 +537,7 @@ def render_news_table(df: pd.DataFrame):
 
     styled = (display.style
               .applymap(color_sent, subset=['Sentiment'])
-              .format({'Sentiment': '{:.2f}'}))
+              .format({'Sentiment': '{:.2f}'}))  # 소수점 정확히 2자리
     st.dataframe(
         styled,
         column_config={'URL': st.column_config.LinkColumn('URL')},
@@ -695,22 +694,26 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
     df_r = pd.DataFrame(results)
     
+    # 현재값 포맷
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
     
+    # 모든 성과 컬럼을 format_number로 포맷 (Distribution과 동일 방식)
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
     for col in perf_cols:
         if col in df_r.columns:
             df_r[col] = df_r[col].apply(lambda x: format_number(x, 2) if pd.notnull(x) else "N/A")
-    
+
     return df_r
 
 
 def style_perf_table_with_databars(df, perf_cols):
+    """이미 포맷된 데이터에 파스텔 히트맵만 적용"""
     styled = df.copy().style
 
     for col in perf_cols:
         if col in df.columns:
+            # 문자열에서 % 제거 후 숫자로 변환 (히트맵용)
             numeric_vals = pd.to_numeric(
                 df[col].astype(str).str.replace('%', '').str.strip(),
                 errors='coerce'
@@ -721,6 +724,7 @@ def style_perf_table_with_databars(df, perf_cols):
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
+                # 파스텔 히트맵 (숫자는 이미 format_number로 포맷되어 있음)
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='RdYlGn',
@@ -734,74 +738,30 @@ def style_perf_table_with_databars(df, perf_cols):
 
 
 # ======================================================
-# Time‑series helper (multi panel, shared x)
+# Chart Functions for Page 1
 # ======================================================
-def make_multi_panel_line(df: pd.DataFrame, title: str, y_label: str):
-    """
-    df: index=datetime, columns=assets
-    각 자산을 한 행으로, x축은 공유하는 subplot 생성.
-    """
-    assets = list(df.columns)
-    n = len(assets)
-    fig = make_subplots(
-        rows=n, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.02,
-        subplot_titles=assets,
-    )
-    for i, asset in enumerate(assets, start=1):
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df[asset],
-                mode="lines",
-                line=dict(width=1.5),
-                name=asset,
-                showlegend=False,
-            ),
-            row=i, col=1,
-        )
-        fig.update_yaxes(title_text=y_label if i == 1 else "", row=i, col=1)
-
+def plot_monthly_returns(prices_df, asset_name):
+    monthly = prices_df.resample('M').last()
+    returns = monthly.pct_change().dropna() * 100
+    colors = ['#2ecc71' if x > 0 else '#e74c3c' for x in returns.iloc[:, 0]]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=returns.index.strftime('%Y-%m'),
+        y=returns.iloc[:, 0],
+        marker_color=colors,
+        text=[f"{v:.2f}%" for v in returns.iloc[:, 0]],
+        textposition='outside',
+    ))
     fig.update_layout(
-        title=title,
-        template="plotly_white",
-        height=max(250, 120 * n),
-        margin=dict(t=60, b=40, l=60, r=20),
+        title=f'{asset_name}',
+        xaxis_title='Month',
+        yaxis_title='Return (%)',
+        template='plotly_white',
+        height=320,
+        showlegend=False,
+        margin=dict(t=30, b=20, l=30, r=20),
     )
     return fig
-
-
-# ======================================================
-# Chart-related calculations
-# ======================================================
-def compute_monthly_returns_df(prices_data: pd.DataFrame) -> pd.DataFrame:
-    monthly = prices_data.resample('M').last()
-    rets = monthly.pct_change().dropna() * 100
-    return rets
-
-
-def compute_rolling_vol_df(prices_data: pd.DataFrame, window: int = 126) -> pd.DataFrame:
-    returns = prices_data.pct_change().dropna()
-    rolling_vol = returns.rolling(window).std() * np.sqrt(252) * 100
-    return rolling_vol.dropna(how='all')
-
-
-def compute_rolling_sharpe_df(prices_data: pd.DataFrame, window: int = 126, risk_free: float = 0.02) -> pd.DataFrame:
-    returns = prices_data.pct_change().dropna()
-    rolling_mean = returns.rolling(window).mean() * 252
-    rolling_std = returns.rolling(window).std() * np.sqrt(252)
-    sharpe = (rolling_mean - risk_free) / rolling_std
-    return sharpe.dropna(how='all')
-
-
-def compute_drawdown_df(prices_data: pd.DataFrame) -> pd.DataFrame:
-    dd = pd.DataFrame(index=prices_data.index, columns=prices_data.columns, dtype=float)
-    for col in prices_data.columns:
-        s = prices_data[col].dropna().astype(float)
-        roll_max = s.cummax()
-        dd[col] = (s / roll_max - 1) * 100
-    return dd.dropna(how='all')
 
 
 def get_distribution_stats(prices_df, asset_name):
@@ -839,6 +799,55 @@ def get_rolling_volatility_table(prices_df, asset_name, window=126):
             })
 
     return pd.DataFrame(monthly_vol[::-1]) if monthly_vol else pd.DataFrame()
+
+
+def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
+    returns = prices_df.pct_change().dropna()
+    rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rolling_vol.index,
+        y=rolling_vol.values,
+        mode='lines',
+        line=dict(color='#3498db', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(52, 152, 219, 0.2)',
+    ))
+    fig.update_layout(
+        title=f'{asset_name}',
+        xaxis_title='Date',
+        yaxis_title='Volatility (%)',
+        template='plotly_white',
+        height=320,
+        margin=dict(t=30, b=20, l=30, r=20),
+    )
+    return fig
+
+
+def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
+    returns = prices_df.pct_change().dropna()
+    rolling_mean = returns.iloc[:, 0].rolling(window).mean() * 252
+    rolling_std = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252)
+    rolling_sharpe = (rolling_mean - risk_free_rate) / rolling_std
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rolling_sharpe.index,
+        y=rolling_sharpe.values,
+        mode='lines',
+        line=dict(color='#f39c12', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(243, 156, 18, 0.2)',
+    ))
+    fig.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.5)
+    fig.update_layout(
+        title=f'{asset_name}',
+        xaxis_title='Date',
+        yaxis_title='Sharpe Ratio',
+        template='plotly_white',
+        height=320,
+        margin=dict(t=30, b=20, l=30, r=20),
+    )
+    return fig
 
 
 def style_distribution_stats(stats_df):
@@ -932,9 +941,6 @@ def show_page1():
         render_comprehensive_chart(STYLE_ETFS, "style")
 
 
-# ======================================================
-# Comprehensive Chart Renderer (Page 1)
-# ======================================================
 def render_comprehensive_chart(label2t, chart_key):
     if f"{chart_key}_period" not in st.session_state:
         st.session_state[f"{chart_key}_period"] = "3년"
@@ -1003,24 +1009,42 @@ def render_comprehensive_chart(label2t, chart_key):
 
         assets = list(label2t.keys())
 
-        # === Monthly Returns (multi panel) ===
-        st.subheader("📊 Monthly Returns (공통 x축)")
-        monthly_rets = compute_monthly_returns_df(prices_data[assets])
-        fig_month = make_multi_panel_line(
-            monthly_rets,
-            title="Monthly Returns (%)",
-            y_label="Return(%)"
-        )
-        st.plotly_chart(fig_month, use_container_width=True)
+        st.subheader("📊 Monthly Returns")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_monthly_returns(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_monthly_returns(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
 
         st.subheader("📉 Distribution of Monthly Returns")
+        
+        # 모든 자산의 분포 통계를 하나의 테이블로 합치기
         all_stats = []
         for asset in assets:
             asset_data = prices_data[[asset]]
             stats = get_distribution_stats(asset_data, asset)
             all_stats.append(stats)
+        
+        # 통계 테이블 생성
         stats_df = pd.DataFrame(all_stats)
-
+        
+        # 각 열별로 히트맵 적용 (파스텔 색상)
         styled = stats_df.style
         numeric_cols = [col for col in stats_df.columns if col != '자산']
         
@@ -1035,41 +1059,57 @@ def render_comprehensive_chart(label2t, chart_key):
                     cmap='RdYlGn',
                     vmin=vmin,
                     vmax=vmax,
-                    low=0.3,
+                    low=0.3,  # 파스텔 느낌
                     high=0.3
                 )
         
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        # === Rolling Volatility ===
-        st.subheader("📈 Rolling Volatility (6-Month, 공통 x축)")
-        rolling_vol_df = compute_rolling_vol_df(prices_data[assets], window=126)
-        fig_vol = make_multi_panel_line(
-            rolling_vol_df,
-            title="Rolling 6M Volatility (annualized, %)",
-            y_label="Vol(%)"
-        )
-        st.plotly_chart(fig_vol, use_container_width=True)
+        st.subheader("📈 Rolling Volatility (6-Month)")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
 
-        # === Rolling Sharpe ===
-        st.subheader("⭐ Rolling Sharpe Ratio (6-Month, 공통 x축)")
-        rolling_sharpe_df = compute_rolling_sharpe_df(prices_data[assets], window=126, risk_free=0.02)
-        fig_sharpe = make_multi_panel_line(
-            rolling_sharpe_df,
-            title="Rolling 6M Sharpe Ratio",
-            y_label="Sharpe"
-        )
-        st.plotly_chart(fig_sharpe, use_container_width=True)
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_rolling_volatility_visual(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
 
-        # === Maximum Drawdown ===
-        st.subheader("📉 Maximum Drawdown (공통 x축)")
-        dd_df = compute_drawdown_df(prices_data[assets])
-        fig_dd = make_multi_panel_line(
-            dd_df,
-            title="Drawdown from Peak (%)",
-            y_label="Drawdown(%)"
-        )
-        st.plotly_chart(fig_dd, use_container_width=True)
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_rolling_volatility_visual(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
+
+        st.subheader("⭐ Rolling Sharpe Ratio (6-Month)")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_rolling_sharpe(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_rolling_sharpe(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
 
 
 # ======================================================
@@ -1099,13 +1139,14 @@ def show_page2():
         all_news = NewsCollector(days=3).collect_all(holdings, etf_ticker)
         if not all_news:
             st.warning(f"⚠️ {selected}: 관련 뉴스를 찾지 못했습니다.")
-        else:
-            progress.progress(60, text=f"✅ {len(all_news)}건 뉴스 — FinBERT 감성 분석 중...")
+            progress.empty()
+            return
+        progress.progress(60, text=f"✅ {len(all_news)}건 뉴스 — FinBERT 감성 분석 중...")
 
-            analyzed = load_analyzer().batch_analyze(all_news)
-            st.session_state[cache_key] = analyzed
-            progress.progress(100, text="✅ 분석 완료!")
-            time.sleep(0.5)
+        analyzed = load_analyzer().batch_analyze(all_news)
+        st.session_state[cache_key] = analyzed
+        progress.progress(100, text="✅ 분석 완료!")
+        time.sleep(0.5)
         progress.empty()
 
     if cache_key not in st.session_state:
@@ -1343,6 +1384,7 @@ with st.sidebar:
 
         `THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED...`
         """, help="Click to see the full license text.")
+
 
 if page == "📊 시장 성과":
     show_page1()
