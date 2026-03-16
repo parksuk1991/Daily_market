@@ -775,7 +775,7 @@ def show_page1():
     # 헤더
     col_t, col_img = st.columns([9, 1])
     with col_t:
-        st.title("🌐 시장 성과")
+        st.title("🌐 Market Performance")
         update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
     with col_img:
         try:
