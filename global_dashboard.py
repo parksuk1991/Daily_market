@@ -797,12 +797,12 @@ def show_page1():
     # 성과 테이블
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
     for title, label2t, h in [
-        ("📊 주식시장",   STOCK_ETFS,  490),
-        ("🗠 채권시장",   BOND_ETFS,   385),
-        ("💱 통화",       CURRENCY,    315),
-        ("📈 암호화폐",   CRYPTO,      385),
-        ("📕 스타일 ETF", STYLE_ETFS,  245),
-        ("📘 섹터 ETF",   SECTOR_ETFS, 420),
+        ("📊 Equity",   STOCK_ETFS,  490),
+        ("🗠 Bond",   BOND_ETFS,   385),
+        ("💱 Currency",       CURRENCY,    315),
+        ("📈 Crypto",   CRYPTO,      385),
+        ("📕 Style ETF", STYLE_ETFS,  245),
+        ("📘 Sector ETF",   SECTOR_ETFS, 420),
     ]:
         st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
