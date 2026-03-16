@@ -537,7 +537,7 @@ def render_news_table(df: pd.DataFrame):
 
     styled = (display.style
               .applymap(color_sent, subset=['Sentiment'])
-              .format({'Sentiment': '{:.4f}'}))
+              .format({'Sentiment': '{:.2f}'}))  # 소수점 정확히 2자리
     st.dataframe(
         styled,
         column_config={'URL': st.column_config.LinkColumn('URL')},
@@ -700,22 +700,34 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
+    """소수점 정확히 2자리 + 파스텔 데이터바 히트맵"""
     styled = df.copy().style
 
     for col in perf_cols:
         if col in df.columns:
+            # 소수점 정확히 2자리로 포맷
+            styled = styled.format({col: lambda x: f"{float(x):.2f}%" if pd.notnull(x) else 'N/A'})
+            
+            # 숫자 값 추출
             numeric_vals = pd.to_numeric(
                 df[col].astype(str).str.replace('%', '').str.strip(),
                 errors='coerce'
             )
-
-            styled = styled.format({col: lambda x: format_number(x, 2) + '%' if pd.notnull(x) else 'N/A'})
-
-            styled = styled.bar(
-                subset=[col],
-                color=['#d62728', '#ffed6f'],
-                width=100
-            )
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                
+                # 파스텔 색상 데이터바 (가시성 좋음)
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap='RdYlGn',
+                    vmin=vmin,
+                    vmax=vmax,
+                    low=0.3,  # 파스텔 느낌
+                    high=0.3
+                )
 
     return styled
 
@@ -1016,35 +1028,37 @@ def render_comprehensive_chart(label2t, chart_key):
                     cols[1].error(f"{asset2} 실패")
 
         st.subheader("📉 Distribution of Monthly Returns")
-        for i in range(0, len(assets), 2):
-            cols = st.columns(2)
-
-            asset1 = assets[i]
-            asset1_data = prices_data[[asset1]]
-            try:
-                with cols[0]:
-                    stats = get_distribution_stats(asset1_data, asset1)
-                    st.dataframe(
-                        style_distribution_stats(pd.DataFrame([stats])),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-            except Exception as e:
-                cols[0].error(f"{asset1} 실패")
-
-            if i + 1 < len(assets):
-                asset2 = assets[i + 1]
-                asset2_data = prices_data[[asset2]]
-                try:
-                    with cols[1]:
-                        stats = get_distribution_stats(asset2_data, asset2)
-                        st.dataframe(
-                            style_distribution_stats(pd.DataFrame([stats])),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                except Exception as e:
-                    cols[1].error(f"{asset2} 실패")
+        
+        # 모든 자산의 분포 통계를 하나의 테이블로 합치기
+        all_stats = []
+        for asset in assets:
+            asset_data = prices_data[[asset]]
+            stats = get_distribution_stats(asset_data, asset)
+            all_stats.append(stats)
+        
+        # 통계 테이블 생성
+        stats_df = pd.DataFrame(all_stats)
+        
+        # 각 열별로 히트맵 적용 (파스텔 색상)
+        styled = stats_df.style
+        numeric_cols = [col for col in stats_df.columns if col != '자산']
+        
+        for col in numeric_cols:
+            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap='RdYlGn',
+                    vmin=vmin,
+                    vmax=vmax,
+                    low=0.3,  # 파스텔 느낌
+                    high=0.3
+                )
+        
+        st.dataframe(styled, use_container_width=True, hide_index=True)
 
         st.subheader("📈 Rolling Volatility (6-Month)")
         for i in range(0, len(assets), 2):
@@ -1056,13 +1070,6 @@ def render_comprehensive_chart(label2t, chart_key):
                 with cols[0]:
                     fig = plot_rolling_volatility_visual(asset1_data, asset1)
                     st.plotly_chart(fig, use_container_width=True)
-                    vol_table = get_rolling_volatility_table(asset1_data, asset1)
-                    if not vol_table.empty:
-                        st.dataframe(
-                            style_volatility_table(vol_table),
-                            use_container_width=True,
-                            hide_index=True
-                        )
             except Exception as e:
                 cols[0].error(f"{asset1} 실패")
 
@@ -1073,13 +1080,6 @@ def render_comprehensive_chart(label2t, chart_key):
                     with cols[1]:
                         fig = plot_rolling_volatility_visual(asset2_data, asset2)
                         st.plotly_chart(fig, use_container_width=True)
-                        vol_table = get_rolling_volatility_table(asset2_data, asset2)
-                        if not vol_table.empty:
-                            st.dataframe(
-                                style_volatility_table(vol_table),
-                                use_container_width=True,
-                                hide_index=True
-                            )
                 except Exception as e:
                     cols[1].error(f"{asset2} 실패")
 
@@ -1266,12 +1266,12 @@ def show_page3():
         except:
             return ''
 
-    fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.1f}%'}
+    fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.2f}%'}
     styled_a = (analyst_sorted.style
                 .format(fmt, na_rep='N/A')
                 .applymap(color_upside, subset=['상승여력(%)'])
                 .applymap(color_rating, subset=['등급 점수'])
-                .background_gradient(subset=['상승여력(%)'], cmap='RdYlGn', vmin=-20, vmax=40))
+                .background_gradient(subset=['상승여력(%)'], cmap='RdYlGn', vmin=-20, vmax=40, low=0.3, high=0.3))
     st.dataframe(styled_a, use_container_width=True,
                  height=min(500, 40 + len(analyst_sorted) * 35))
 
@@ -1298,7 +1298,7 @@ def show_page3():
     st.subheader("🔍 밸류에이션 & EPS")
     val_sorted = val_df.sort_values('EPS 상승률(%)', ascending=False, na_position='last')
     fmt_v = {'Trailing PE': '{:.1f}', 'Forward PE': '{:.1f}',
-             'Trailing EPS': '{:.2f}', 'Forward EPS': '{:.2f}', 'EPS 상승률(%)': '{:.1f}%'}
+             'Trailing EPS': '{:.2f}', 'Forward EPS': '{:.2f}', 'EPS 상승률(%)': '{:.2f}%'}
 
     def color_eps(val):
         try:
@@ -1314,7 +1314,7 @@ def show_page3():
     styled_v = (val_sorted.style
                 .format(fmt_v, na_rep='N/A')
                 .applymap(color_eps, subset=['EPS 상승률(%)'])
-                .background_gradient(subset=['EPS 상승률(%)'], cmap='RdYlGn'))
+                .background_gradient(subset=['EPS 상승률(%)'], cmap='RdYlGn', low=0.3, high=0.3))
     st.dataframe(styled_v, use_container_width=True,
                  height=min(500, 40 + len(val_sorted) * 35))
 
