@@ -36,10 +36,9 @@ BOND_ETFS = {
     '신흥국채(EMB)': 'EMB', '미국 하이일드(HYG)': 'HYG', '미국 물가연동(TIP)': 'TIP',
     '미국 단기회사채(VCSH)': 'VCSH', '글로벌국채(BNDX)': 'BNDX', '미국 국채(BND)': 'BND',
     '단기국채(SPTS)': 'SPTS',
-}
-# DX-Y.NYB 제거 (데이터 수집 실패)
-CURRENCY = {
-    '달러인덱스': 'DX-Y.NYB', '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
+} #'달러인덱스': 'DX-Y.NYB', 일단 제외했는데 데이터 왜 못 불러오는지 확인 필요
+CURRENCY = { 
+    '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
     '달러-엔': 'JPY=X', '원-엔': 'JPYKRW=X', '달러-유로': 'EURUSD=X',
     '달러-파운드': 'GBPUSD=X', '달러-위안': 'CNY=X',
 }
@@ -407,7 +406,7 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
              .sort_values('Avg', ascending=True))
 
     company_map = df.drop_duplicates('Ticker').set_index('Ticker')['Company'].to_dict()
-    colors = ['#2ecc71' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
+    colors = ['#FFBC00' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
               for v in agg['Avg']]
 
     fig = go.Figure()
@@ -538,7 +537,7 @@ def render_news_table(df: pd.DataFrame):
 
     styled = (display.style
               .applymap(color_sent, subset=['Sentiment'])
-              .format({'Sentiment': '{:.2f}'}))
+              .format({'Sentiment': '{:.2f}'}))  # 소수점 정확히 2자리
     st.dataframe(
         styled,
         column_config={'URL': st.column_config.LinkColumn('URL')},
@@ -619,10 +618,33 @@ def format_number(val, decimals=2):
 
 
 def get_perf_table_improved(label2ticker, ref_date=None):
+    tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
     start = ref_date - timedelta(days=4 * 365)
     end = ref_date + timedelta(days=1)
+
+    try:
+        raw = yf.download(tickers, start=start, end=end, progress=False)
+        if isinstance(raw, pd.DataFrame):
+            df = raw['Close']
+        else:
+            df = raw
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        df = df.ffill().dropna(how='all')[tickers]
+    except:
+        return pd.DataFrame()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    avail = df.index[df.index.date <= ref_date]
+    if len(avail) == 0:
+        return pd.DataFrame()
+
+    last_trade = avail[-1].date()
+    last_idx = avail[-1]
 
     periods = {
         '1D(%)': {'days': 1, 'type': 'business'},
@@ -638,69 +660,45 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
     results = []
     for label, ticker in label2ticker.items():
-        try:
-            # 각 티커를 개별적으로 다운로드 시도
-            df = yf.download(ticker, start=start, end=end, progress=False)['Close']
-            
-            if df is None or df.empty:
-                continue  # 데이터가 없으면 건너뛰기
-            
-            df = df.ffill()
-            
-            # 기준일 이전의 데이터만 사용
-            avail = df.index[df.index.date <= ref_date]
-            if len(avail) == 0:
-                continue
-            
-            last_trade = avail[-1].date()
-            last_idx = avail[-1]
-            
-            row = {'자산명': label}
-            curr = df.loc[last_idx]
-            row['현재값'] = curr
-
-            nan_count = 0
-            for pk, cfg in periods.items():
-                base = None
-                try:
-                    if cfg['type'] == 'month_start':
-                        d = df[df.index.date >= last_trade.replace(day=1)]
-                        base = d.iloc[0] if len(d) > 0 else None
-                    elif cfg['type'] == 'year_start':
-                        d = df[df.index.date >= last_trade.replace(month=1, day=1)]
-                        base = d.iloc[0] if len(d) > 0 else None
-                    else:
-                        ci = df.index.get_loc(last_idx)
-                        lb = cfg['days']
-                        base = df.iloc[ci - lb] if ci >= lb else (df.iloc[0] if ci > 0 else None)
-
-                    if base is not None and not np.isnan(base) and base != 0:
-                        row[pk] = (curr / base - 1) * 100
-                    else:
-                        row[pk] = np.nan
-                        nan_count += 1
-                except:
-                    row[pk] = np.nan
-                    nan_count += 1
-            
-            # 70% 이상 데이터만 포함
-            if nan_count <= len(periods) * 0.3:
-                results.append(row)
-        except Exception as e:
-            # 티커 다운로드 실패 시 로그 출력하고 건너뛰기
-            print(f"데이터 수집 실패: {ticker} - {str(e)}")
+        row = {'자산명': label}
+        series = df[ticker].dropna()
+        if last_idx not in series.index or len(series) == 0:
+            row['현재값'] = np.nan
+            for pk in periods:
+                row[pk] = np.nan
+            results.append(row)
             continue
 
-    if not results:
-        return pd.DataFrame()
-    
+        curr = series.loc[last_idx]
+        row['현재값'] = curr
+
+        for pk, cfg in periods.items():
+            base = None
+            try:
+                if cfg['type'] == 'month_start':
+                    d = series[series.index.date >= last_trade.replace(day=1)]
+                    base = d.iloc[0] if len(d) else None
+                elif cfg['type'] == 'year_start':
+                    d = series[series.index.date >= last_trade.replace(month=1, day=1)]
+                    base = d.iloc[0] if len(d) else None
+                else:
+                    ci = series.index.get_loc(last_idx)
+                    lb = cfg['days']
+                    base = series.iloc[ci - lb] if ci >= lb else (series.iloc[0] if ci > 0 else None)
+
+                row[pk] = (curr / base - 1) * 100 if (base is not None and not np.isnan(base) and base != 0) else np.nan
+            except:
+                row[pk] = np.nan
+
+        results.append(row)
+
     df_r = pd.DataFrame(results)
     
     # 현재값 포맷
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
     
-    # 모든 성과 컬럼을 format_number로 포맷
+    # 모든 성과 컬럼을 format_number로 포맷 (Distribution과 동일 방식)
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
     for col in perf_cols:
         if col in df_r.columns:
@@ -710,30 +708,30 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """N/A 값 안전 처리"""
+    """이미 포맷된 데이터에 파스텔 히트맵만 적용"""
     styled = df.copy().style
 
     for col in perf_cols:
         if col in df.columns:
+            # 문자열에서 % 제거 후 숫자로 변환 (히트맵용)
             numeric_vals = pd.to_numeric(
                 df[col].astype(str).str.replace('%', '').str.strip(),
                 errors='coerce'
             )
             valid_vals = numeric_vals[numeric_vals.notna()]
             
-            # 유효한 값이 30% 이상일 때만 히트맵 적용
-            if len(valid_vals) > 0 and len(valid_vals) > len(numeric_vals) * 0.3:
+            if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
+                # 파스텔 히트맵 (숫자는 이미 format_number로 포맷되어 있음)
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='RdYlGn',
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
-                    high=0.3,
-                    na_rep='white'
+                    high=0.3
                 )
 
     return styled
@@ -782,6 +780,25 @@ def get_distribution_stats(prices_df, asset_name):
         '최대(%)': format_number(np.max(returns_flat), 2),
     }
     return stats
+
+
+def get_rolling_volatility_table(prices_df, asset_name, window=126):
+    returns = prices_df.pct_change().dropna()
+    rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
+    rolling_vol = rolling_vol.dropna()
+
+    monthly_vol = []
+    for i in range(1, 13):
+        cutoff = datetime.now() - timedelta(days=30*i)
+        mask = rolling_vol.index >= cutoff
+        if mask.any():
+            vol = rolling_vol[mask].iloc[-1]
+            monthly_vol.append({
+                '기간': cutoff.strftime('%Y-%m'),
+                '변동성(%)': format_number(vol, 2)
+            })
+
+    return pd.DataFrame(monthly_vol[::-1]) if monthly_vol else pd.DataFrame()
 
 
 def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
@@ -833,6 +850,46 @@ def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
     return fig
 
 
+def style_distribution_stats(stats_df):
+    styled = stats_df.style
+
+    numeric_cols = [col for col in stats_df.columns if col != '자산']
+    if numeric_cols:
+        for col in numeric_cols:
+            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap='RdYlGn',
+                    vmin=vmin,
+                    vmax=vmax
+                )
+
+    return styled
+
+
+def style_volatility_table(vol_df):
+    styled = vol_df.style
+
+    if '변동성(%)' in vol_df.columns:
+        numeric_vals = pd.to_numeric(vol_df['변동성(%)'], errors='coerce')
+        valid_vals = numeric_vals[numeric_vals.notna()]
+        if len(valid_vals) > 0:
+            vmin = valid_vals.min()
+            vmax = valid_vals.max()
+            styled = styled.background_gradient(
+                subset=['변동성(%)'],
+                cmap='RdYlGn_r',
+                vmin=vmin,
+                vmax=vmax
+            )
+
+    return styled
+
+
 # ======================================================
 # Page 1: Market Performance
 # ======================================================
@@ -852,7 +909,7 @@ def show_page1():
     for title, label2t, h in [
         ("📊 Equity", STOCK_ETFS, 520),
         ("🗠 Bond", BOND_ETFS, 410),
-        ("💱 Currency", CURRENCY, 310),
+        ("💱 Currency", CURRENCY, 340),
         ("📈 Crypto", CRYPTO, 410),
         ("📕 Style ETF", STYLE_ETFS, 270),
         ("📘 Sector ETF", SECTOR_ETFS, 450),
@@ -866,8 +923,6 @@ def show_page1():
                 use_container_width=True,
                 height=h
             )
-        else:
-            st.warning(f"{title} 데이터를 불러올 수 없습니다.")
 
     st.markdown("---")
 
@@ -911,33 +966,18 @@ def render_comprehensive_chart(label2t, chart_key):
         start_date = end_date - timedelta(days=months * 31)
 
         try:
-            # 각 티커를 개별적으로 다운로드
-            prices_data_dict = {}
-            failed_tickers = []
-            
-            for label, ticker in label2t.items():
-                try:
-                    data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                    if isinstance(data, pd.DataFrame):
-                        prices_data_dict[label] = data['Close']
-                    else:
-                        prices_data_dict[label] = data
-                except Exception as e:
-                    print(f"{ticker} 다운로드 실패: {str(e)}")
-                    failed_tickers.append((label, ticker))
-                    continue
-            
-            # 실패한 티커 경고
-            if failed_tickers:
-                failed_str = ", ".join([f"{label}({ticker})" for label, ticker in failed_tickers])
-                st.warning(f"⚠️ 데이터 수집 실패: {failed_str}")
-            
-            if not prices_data_dict:
-                st.error("데이터를 불러올 수 없습니다.")
-                return
-            
-            # DataFrame으로 결합
-            prices_data = pd.DataFrame(prices_data_dict)
+            tickers = list(label2t.values())
+            prices_raw = yf.download(tickers, start=start_date, end=end_date, progress=False)
+
+            if isinstance(prices_raw, pd.DataFrame):
+                prices_data = prices_raw['Close']
+            else:
+                prices_data = prices_raw.to_frame()
+
+            if isinstance(prices_data, pd.Series):
+                prices_data = prices_data.to_frame()
+
+            prices_data.columns = list(label2t.keys())
             prices_data = prices_data.ffill().dropna()
 
         except Exception as e:
@@ -967,7 +1007,7 @@ def render_comprehensive_chart(label2t, chart_key):
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        assets = list(prices_data.columns)
+        assets = list(label2t.keys())
 
         st.subheader("📊 Monthly Returns")
         for i in range(0, len(assets), 2):
@@ -994,14 +1034,17 @@ def render_comprehensive_chart(label2t, chart_key):
 
         st.subheader("📉 Distribution of Monthly Returns")
         
+        # 모든 자산의 분포 통계를 하나의 테이블로 합치기
         all_stats = []
         for asset in assets:
             asset_data = prices_data[[asset]]
             stats = get_distribution_stats(asset_data, asset)
             all_stats.append(stats)
         
+        # 통계 테이블 생성
         stats_df = pd.DataFrame(all_stats)
         
+        # 각 열별로 히트맵 적용 (파스텔 색상)
         styled = stats_df.style
         numeric_cols = [col for col in stats_df.columns if col != '자산']
         
@@ -1016,9 +1059,8 @@ def render_comprehensive_chart(label2t, chart_key):
                     cmap='RdYlGn',
                     vmin=vmin,
                     vmax=vmax,
-                    low=0.3,
-                    high=0.3,
-                    na_rep='white'
+                    low=0.3,  # 파스텔 느낌
+                    high=0.3
                 )
         
         st.dataframe(styled, use_container_width=True, hide_index=True)
@@ -1233,42 +1275,28 @@ def show_page3():
     styled_a = (analyst_sorted.style
                 .format(fmt, na_rep='N/A')
                 .applymap(color_upside, subset=['상승여력(%)'])
-                .applymap(color_rating, subset=['등급 점수']))
-    
-    upside_vals = pd.to_numeric(analyst_sorted['상승여력(%)'], errors='coerce')
-    valid_upside = upside_vals[upside_vals.notna()]
-    if len(valid_upside) > 0:
-        styled_a = styled_a.background_gradient(
-            subset=['상승여력(%)'], 
-            cmap='RdYlGn', 
-            vmin=-20, 
-            vmax=40, 
-            low=0.3, 
-            high=0.3,
-            na_rep='white'
-        )
-    
+                .applymap(color_rating, subset=['등급 점수'])
+                .background_gradient(subset=['상승여력(%)'], cmap='RdYlGn', vmin=-20, vmax=40, low=0.3, high=0.3))
     st.dataframe(styled_a, use_container_width=True,
                  height=min(500, 40 + len(analyst_sorted) * 35))
 
     if not analyst_sorted['상승여력(%)'].isna().all():
         fig_up = go.Figure()
         df_plot = analyst_sorted.dropna(subset=['상승여력(%)'])
-        if len(df_plot) > 0:
-            fig_up.add_trace(go.Bar(
-                x=df_plot['Ticker'],
-                y=df_plot['상승여력(%)'],
-                marker_color=['#2ecc71' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
-                text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
-                textposition='outside',
-            ))
-            fig_up.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.4)
-            fig_up.update_layout(
-                title='종목별 애널리스트 목표주가 상승여력',
-                xaxis_title='Ticker', yaxis_title='상승여력 (%)',
-                template='plotly_white', height=380,
-            )
-            st.plotly_chart(fig_up, use_container_width=True)
+        fig_up.add_trace(go.Bar(
+            x=df_plot['Ticker'],
+            y=df_plot['상승여력(%)'],
+            marker_color=['#FFBC00' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
+            text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
+            textposition='outside',
+        ))
+        fig_up.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.4)
+        fig_up.update_layout(
+            title='종목별 애널리스트 목표주가 상승여력',
+            xaxis_title='Ticker', yaxis_title='상승여력 (%)',
+            template='plotly_white', height=380,
+        )
+        st.plotly_chart(fig_up, use_container_width=True)
 
     st.markdown("---")
 
@@ -1290,19 +1318,8 @@ def show_page3():
 
     styled_v = (val_sorted.style
                 .format(fmt_v, na_rep='N/A')
-                .applymap(color_eps, subset=['EPS 상승률(%)']))
-    
-    eps_vals = pd.to_numeric(val_sorted['EPS 상승률(%)'], errors='coerce')
-    valid_eps = eps_vals[eps_vals.notna()]
-    if len(valid_eps) > 0:
-        styled_v = styled_v.background_gradient(
-            subset=['EPS 상승률(%)'], 
-            cmap='RdYlGn', 
-            low=0.3, 
-            high=0.3,
-            na_rep='white'
-        )
-    
+                .applymap(color_eps, subset=['EPS 상승률(%)'])
+                .background_gradient(subset=['EPS 상승률(%)'], cmap='RdYlGn', low=0.3, high=0.3))
     st.dataframe(styled_v, use_container_width=True,
                  height=min(500, 40 + len(val_sorted) * 35))
 
