@@ -16,19 +16,14 @@ import feedparser
 from bs4 import BeautifulSoup
 import re
 from scipy import ndimage
-import base64
 
 warnings.filterwarnings('ignore')
 ssl._create_default_https_context = ssl._create_unverified_context
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-st.set_page_config(
-    page_title="Global Market Monitoring",
-    page_icon="🌐",
-    layout="wide"
-)
+st.set_page_config(page_title="Global Market Monitoring", page_icon="🌐", layout="wide")
 
-# =========== 자산 정의 ================
+# ===== 자산 정의 =====
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY', 'NASDAQ 100 (QQQ)': 'QQQ', '전세계 (ACWI)': 'ACWI',
     '선진국 (VEA)': 'VEA', '신흥국 (VWO)': 'VWO', '유럽(Europe, VGK)': 'VGK',
@@ -41,9 +36,9 @@ BOND_ETFS = {
     '신흥국채(EMB)': 'EMB', '미국 하이일드(HYG)': 'HYG', '미국 물가연동(TIP)': 'TIP',
     '미국 단기회사채(VCSH)': 'VCSH', '글로벌국채(BNDX)': 'BNDX', '미국 국채(BND)': 'BND',
     '단기국채(SPTS)': 'SPTS',
-}
-CURRENCY = {
-    '달러인덱스': 'DX-Y.NYB', '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
+} #'달러인덱스': 'DX-Y.NYB', 일단 제외했는데 데이터 왜 못 불러오는지 확인 필요
+CURRENCY = { 
+    '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
     '달러-엔': 'JPY=X', '원-엔': 'JPYKRW=X', '달러-유로': 'EURUSD=X',
     '달러-파운드': 'GBPUSD=X', '달러-위안': 'CNY=X',
 }
@@ -65,17 +60,15 @@ SECTOR_ETFS = {
 }
 
 _HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    ),
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept-Language': 'en-US,en;q=0.9',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 }
 
+PERIOD_OPTIONS = [("6개월", 6), ("1년", 12), ("2년", 24), ("3년", 36)]
 
 # ======================================================
-# ====== ETF Collector (4-method chain, no hardcoding) =
+# ETF Collector
 # ======================================================
 class ETFCollector:
     def __init__(self):
@@ -123,7 +116,7 @@ class ETFCollector:
             resp = requests.get(url, headers=_HEADERS, timeout=12, verify=False)
             if resp.status_code != 200:
                 return []
-            soup  = BeautifulSoup(resp.text, 'html.parser')
+            soup = BeautifulSoup(resp.text, 'html.parser')
             table = soup.find('table')
             if not table:
                 return []
@@ -149,7 +142,7 @@ class ETFCollector:
     def _try_yahooquery(self, ticker: str):
         try:
             from yahooquery import Ticker
-            etf      = Ticker(ticker, session=self.cf_session) if self.cf_session else Ticker(ticker)
+            etf = Ticker(ticker, session=self.cf_session) if self.cf_session else Ticker(ticker)
             holdings = etf.fund_holding_info
             if ticker in holdings and isinstance(holdings[ticker], dict):
                 raw = holdings[ticker].get('holdings', [])
@@ -167,10 +160,11 @@ class ETFCollector:
                 return []
             result = []
             for _, row in df.head(10).iterrows():
-                sym  = str(row.get('Symbol',       row.get('symbol', ''))).strip()
+                sym = str(row.get('Symbol', row.get('symbol', ''))).strip()
                 name = str(row.get('Holding Name', row.get('holdingName', sym))).strip()
-                pct  = float(row.get('% Assets',   row.get('holdingPercent', 0)) or 0)
-                if pct < 1: pct *= 100
+                pct = float(row.get('% Assets', row.get('holdingPercent', 0)) or 0)
+                if pct < 1:
+                    pct *= 100
                 if sym and sym != 'nan':
                     result.append({'ticker': sym, 'name': name, 'weight': round(pct, 2)})
             return result
@@ -179,24 +173,24 @@ class ETFCollector:
 
     def get_etf_holdings(self, ticker: str, retry: int = 2):
         result = self._try_ssga(ticker)
-        if result: return result
+        if result:
+            return result
         result = self._try_stockanalysis(ticker)
-        if result: return result
+        if result:
+            return result
         for attempt in range(retry):
             result = self._try_yahooquery(ticker)
-            if result: return result
-            if attempt < retry - 1: time.sleep(1.5)
+            if result:
+                return result
+            if attempt < retry - 1:
+                time.sleep(1.5)
         return self._try_yfinance(ticker)
 
 
 # ======================================================
-# ====== News Collector (Title-only relevance filter) ==
+# News Collector
 # ======================================================
 class NewsCollector:
-    """
-    관련성 필터: 뉴스 제목(title)에만 ticker 심볼 또는 기업명이 포함되어야 함.
-    본문 검색 시 타 종목을 언급하는 기사가 오탐되는 문제를 원천 차단.
-    """
     def __init__(self, days: int = 3):
         self.days = days
         self.cutoff_date = datetime.now() - timedelta(days=days)
@@ -210,7 +204,7 @@ class NewsCollector:
             for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
                 tag.decompose()
             texts = [p.get_text(strip=True) for p in soup.find_all('p') if len(p.get_text(strip=True)) > 30]
-            full  = ' '.join(texts)
+            full = ' '.join(texts)
             return full[:5000] if full else ""
         except Exception:
             return ""
@@ -222,18 +216,10 @@ class NewsCollector:
         return not any(w in lower[:500] for w in ['sign in', 'log in', 'subscribe', 'register'])
 
     def is_relevant(self, title: str, ticker: str, company_name: str) -> bool:
-        """
-        제목(title)에만 종목 심볼 또는 기업명이 있는 경우만 관련 뉴스로 판단.
-        본문을 포함하면 타 종목 언급 기사가 오탐됨 — 제목 한정으로 엄격하게 필터.
-        """
         title_lower = title.lower()
-
-        # 1) ticker 심볼 (예: META, AAPL) — 단어 경계 매칭
         ticker_clean = re.sub(r'[^a-zA-Z0-9]', '', ticker).lower()
         if re.search(r'\b' + re.escape(ticker_clean) + r'\b', title_lower):
             return True
-
-        # 2) 기업명 — 전체명 또는 첫 유의미한 단어 (5자 이상)
         name_lower = company_name.lower().strip()
         if name_lower and len(name_lower) >= 4:
             if name_lower in title_lower:
@@ -241,7 +227,6 @@ class NewsCollector:
             first_word = name_lower.split()[0]
             if len(first_word) >= 5 and re.search(r'\b' + re.escape(first_word) + r'\b', title_lower):
                 return True
-
         return False
 
     def create_summary(self, text: str) -> str:
@@ -260,7 +245,6 @@ class NewsCollector:
         return (summary[:300] + '...') if len(summary) > 300 else (summary or text[:300] + '...')
 
     def collect_yahoo_rss(self, ticker: str, company_name: str) -> list:
-        """Yahoo Finance RSS — 제목 기반 관련성 필터, 건수 제한 없음"""
         try:
             feed = feedparser.parse(f"https://finance.yahoo.com/rss/headline?s={ticker}")
             news = []
@@ -275,10 +259,9 @@ class NewsCollector:
                     else:
                         date_str = datetime.now().strftime('%Y-%m-%d')
 
-                    title       = entry.get('title', '')
+                    title = entry.get('title', '')
                     article_url = entry.get('link', '')
 
-                    # ── 제목 기반 관련성 필터 (오탐 방지 핵심) ──────
                     if not self.is_relevant(title, ticker, company_name):
                         continue
 
@@ -287,14 +270,14 @@ class NewsCollector:
                         continue
 
                     news.append({
-                        'ticker':       ticker,
-                        'title':        title,
-                        'url':          article_url,
+                        'ticker': ticker,
+                        'title': title,
+                        'url': article_url,
                         'published_at': date_str,
-                        'summary':      entry.get('summary', '')[:300],
-                        'content':      content,
-                        'highlights':   self.create_summary(content),
-                        'source':       'Yahoo Finance',
+                        'summary': entry.get('summary', '')[:300],
+                        'content': content,
+                        'highlights': self.create_summary(content),
+                        'source': 'Yahoo Finance',
                     })
                 except Exception:
                     continue
@@ -313,14 +296,16 @@ class NewsCollector:
         for holding in holdings:
             news = self.collect_for_ticker(holding['ticker'], holding['name'])
             for item in news:
-                item['etf']    = etf_ticker
+                item['etf'] = etf_ticker
                 item['weight'] = holding['weight']
             all_news.extend(news)
             time.sleep(0.3)
         return all_news
 
 
-# ====== FinBERT Analyzer ======
+# ======================================================
+# FinBERT Analyzer
+# ======================================================
 class FinBERTAnalyzer:
     def __init__(self):
         self.pipe = None
@@ -337,10 +322,10 @@ class FinBERTAnalyzer:
         if not self.pipe or not text or len(text) < 10:
             return 0.0
         try:
-            text  = re.sub(r'<[^>]+>', '', text)
-            text  = re.sub(r'http\S+', '', text)
-            text  = re.sub(r'\s+', ' ', text).strip()
-            res   = self.pipe(text[:512])[0]
+            text = re.sub(r'<[^>]+>', '', text)
+            text = re.sub(r'http\S+', '', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            res = self.pipe(text[:512])[0]
             label, score = res['label'], res['score']
             return score if label == 'positive' else (-score if label == 'negative' else 0.0)
         except Exception:
@@ -356,18 +341,19 @@ class FinBERTAnalyzer:
 
     def categorize(self, title: str) -> str:
         t = title.lower()
-        if any(w in t for w in ['earnings', 'revenue', 'profit']):   return 'Earnings'
-        if any(w in t for w in ['merger', 'acquisition', 'deal']):   return 'M&A'
-        if any(w in t for w in ['product', 'launch']):               return 'Product'
-        if any(w in t for w in ['regulation', 'lawsuit']):           return 'Regulatory'
-        if any(w in t for w in ['analyst', 'upgrade', 'downgrade']): return 'Analyst'
+        if any(w in t for w in ['earnings', 'revenue', 'profit']):
+            return 'Earnings'
+        if any(w in t for w in ['merger', 'acquisition', 'deal']):
+            return 'M&A'
+        if any(w in t for w in ['product', 'launch']):
+            return 'Product'
+        if any(w in t for w in ['regulation', 'lawsuit']):
+            return 'Regulatory'
+        if any(w in t for w in ['analyst', 'upgrade', 'downgrade']):
+            return 'Analyst'
         return 'General'
 
     def analyze_news(self, news: dict) -> dict:
-        """
-        항상 news 딕셔너리를 반환 (None 반환 없음).
-        본문이 짧아 분석 불가한 경우 sentiment_score = 0.0으로 설정.
-        """
         content = news.get('content', '')
         news['sentiment_score'] = (
             round(self.analyze_text(content), 4) if len(content) >= 100 else 0.0
@@ -376,7 +362,6 @@ class FinBERTAnalyzer:
         return news
 
     def batch_analyze(self, news_list: list) -> list:
-        """전체 뉴스 반환 — 건수 제한, None 필터링 없음"""
         return [self.analyze_news(n) for n in news_list]
 
 
@@ -386,21 +371,21 @@ def load_analyzer():
 
 
 # ======================================================
-# ====== 감성 분석 차트 함수 ===========================
+# Sentiment Analysis Chart Functions
 # ======================================================
 def build_sentiment_df(news_list: list) -> pd.DataFrame:
     rows = []
     for n in news_list:
         s = n.get('sentiment_score', 0.0) or 0.0
         rows.append({
-            'Ticker':    n.get('ticker', ''),
-            'Company':   n.get('company_name', ''),
-            'Date':      n.get('published_at', ''),
-            'Title':     n.get('title', ''),
-            'Headline':  n.get('highlights', ''),
+            'Ticker': n.get('ticker', ''),
+            'Company': n.get('company_name', ''),
+            'Date': n.get('published_at', ''),
+            'Title': n.get('title', ''),
+            'Headline': n.get('highlights', ''),
             'Sentiment': float(s),
-            'Category':  n.get('category', ''),
-            'URL':       n.get('url', ''),
+            'Category': n.get('category', ''),
+            'URL': n.get('url', ''),
         })
     df = pd.DataFrame(rows)
     if df.empty:
@@ -412,7 +397,6 @@ def build_sentiment_df(news_list: list) -> pd.DataFrame:
 
 
 def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
-    """종목별 평균 감정 가로 막대 차트"""
     if df.empty:
         return
     agg = (df.groupby('Ticker')['Sentiment']
@@ -439,10 +423,9 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
     fig.add_vline(x=0, line_width=1, line_dash='dash', line_color='white', opacity=0.4)
     fig.update_layout(
         title=dict(text=f"📊 {sector_name} — 종목별 평균 감정 점수", font=dict(size=14)),
-        xaxis=dict(title="Sentiment Score", range=[-1, 1],
-                   tickvals=[-1, -0.5, 0, 0.5, 1]),
+        xaxis=dict(title="Sentiment Score", range=[-1, 1], tickvals=[-1, -0.5, 0, 0.5, 1]),
         yaxis=dict(title=""),
-        template="plotly_dark",
+        template="plotly_white",
         height=max(260, len(agg) * 44),
         margin=dict(l=70, r=130, t=50, b=40),
         showlegend=False,
@@ -470,7 +453,7 @@ def create_sentiment_histogram(df: pd.DataFrame) -> go.Figure:
     ))
     fig.update_layout(
         title='감정 점수 분포', xaxis_title='감정 점수', yaxis_title='빈도',
-        template="plotly_dark", height=380, showlegend=True,
+        template="plotly_white", height=380, showlegend=True,
     )
     return fig
 
@@ -484,8 +467,8 @@ def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
     counts.columns = ['Category', 'Count']
     color_map = {
         'Positive': 'rgba(255,188,0,0.8)',
-        'Neutral':  'rgba(102,194,165,0.8)',
-        'Negative': 'rgba(65,105,225,0.8)',
+        'Neutral': 'rgba(102,194,165,0.8)',
+        'Negative': 'rgba(230,126,34,0.8)',
     }
     fig = go.Figure()
     fig.add_trace(go.Bar(
@@ -497,7 +480,7 @@ def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
     ))
     fig.update_layout(
         title='감정 분포', xaxis_title='감정 카테고리', yaxis_title='뉴스 개수',
-        template="plotly_dark", height=380, showlegend=False,
+        template="plotly_white", height=380, showlegend=False,
     )
     return fig
 
@@ -506,7 +489,7 @@ def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
     if df.empty:
         return go.Figure()
     tickers = df['Ticker'].unique()
-    colors  = px.colors.qualitative.Set3
+    colors = px.colors.qualitative.Set3
     mean_df = df.groupby('Ticker')['Sentiment'].mean().reset_index()
 
     fig = go.Figure()
@@ -528,13 +511,12 @@ def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         title='종목별 감정 점수 분포 (Box Plot)',
         xaxis_title='종목', yaxis_title='감정 점수',
-        template="plotly_dark", height=480, showlegend=False,
+        template="plotly_white", height=480, showlegend=False,
     )
     return fig
 
 
 def render_news_table(df: pd.DataFrame):
-    """전체 뉴스 테이블 — 긍정/부정/중립 모두 표시"""
     if df.empty:
         st.info("관련 뉴스가 없습니다.")
         return
@@ -545,15 +527,17 @@ def render_news_table(df: pd.DataFrame):
     def color_sent(val):
         try:
             v = float(val)
-            if v > 0.05:  return 'color: #2ecc71; font-weight:bold'
-            if v < -0.05: return 'color: #e74c3c; font-weight:bold'
+            if v > 0.05:
+                return 'color: #2ecc71; font-weight:bold'
+            if v < -0.05:
+                return 'color: #e74c3c; font-weight:bold'
             return 'color: #95a5a6'
         except Exception:
             return ''
 
     styled = (display.style
               .applymap(color_sent, subset=['Sentiment'])
-              .format({'Sentiment': '{:.4f}'}))
+              .format({'Sentiment': '{:.2f}'}))  # 소수점 정확히 2자리
     st.dataframe(
         styled,
         column_config={'URL': st.column_config.LinkColumn('URL')},
@@ -563,25 +547,25 @@ def render_news_table(df: pd.DataFrame):
 
 
 # ======================================================
-# ====== 애널리스트 & 밸류에이션 데이터 ================
+# Analyst & Valuation Functions
 # ======================================================
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
     rows = []
     for sym in ticker_syms:
         try:
-            info         = yf.Ticker(sym).info or {}
-            current_px   = info.get('regularMarketPrice') or info.get('currentPrice')
-            target_px    = info.get('targetMeanPrice')
-            upside       = ((target_px / current_px - 1) * 100
-                            if target_px and current_px and current_px != 0 else None)
+            info = yf.Ticker(sym).info or {}
+            current_px = info.get('regularMarketPrice') or info.get('currentPrice')
+            target_px = info.get('targetMeanPrice')
+            upside = ((target_px / current_px - 1) * 100
+                      if target_px and current_px and current_px != 0 else None)
             rows.append({
-                'Ticker':        sym,
-                '종목명':        info.get('shortName') or info.get('longName') or '',
-                '등급 점수':     info.get('recommendationMean'),
-                '등급':          info.get('recommendationKey', '').capitalize(),
-                '목표주가':      target_px,
-                '현재가':        current_px,
-                '상승여력(%)':   upside,
+                'Ticker': sym,
+                '종목명': info.get('shortName') or info.get('longName') or '',
+                '등급 점수': info.get('recommendationMean'),
+                '등급': info.get('recommendationKey', '').capitalize(),
+                '목표주가': target_px,
+                '현재가': current_px,
+                '상승여력(%)': upside,
             })
         except Exception:
             rows.append({'Ticker': sym, '종목명': '', '등급 점수': None,
@@ -595,20 +579,20 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
     rows = []
     for sym in ticker_syms:
         try:
-            info        = yf.Ticker(sym).info or {}
+            info = yf.Ticker(sym).info or {}
             trailing_pe = info.get('trailingPE')
-            forward_pe  = info.get('forwardPE')
-            t_eps       = info.get('trailingEps') or info.get('trailingEPS')
-            f_eps       = info.get('forwardEps')  or info.get('forwardEPS')
-            eps_growth  = ((f_eps / t_eps - 1) * 100
-                           if t_eps and f_eps and t_eps != 0 else None)
+            forward_pe = info.get('forwardPE')
+            t_eps = info.get('trailingEps') or info.get('trailingEPS')
+            f_eps = info.get('forwardEps') or info.get('forwardEPS')
+            eps_growth = ((f_eps / t_eps - 1) * 100
+                          if t_eps and f_eps and t_eps != 0 else None)
             rows.append({
-                'Ticker':     sym,
-                '종목명':     info.get('shortName') or info.get('longName') or '',
+                'Ticker': sym,
+                '종목명': info.get('shortName') or info.get('longName') or '',
                 'Trailing PE': trailing_pe,
-                'Forward PE':  forward_pe,
+                'Forward PE': forward_pe,
                 'Trailing EPS': t_eps,
-                'Forward EPS':  f_eps,
+                'Forward EPS': f_eps,
                 'EPS 상승률(%)': eps_growth,
             })
         except Exception:
@@ -622,48 +606,72 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
 
 
 # ======================================================
-# ====== 성과 테이블 / 차트 공통 함수 =================
+# Performance Table Functions
 # ======================================================
+def format_number(val, decimals=2):
+    if pd.isna(val):
+        return "N/A"
+    try:
+        return f"{float(val):.{decimals}f}"
+    except:
+        return "N/A"
+
+
 def get_perf_table_improved(label2ticker, ref_date=None):
     tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
     start = ref_date - timedelta(days=4 * 365)
-    end   = ref_date + timedelta(days=1)
-    try:
-        df = yf.download(tickers, start=start, end=end, progress=False)['Close']
-        if isinstance(df, pd.Series): df = df.to_frame()
-        df = df.ffill().dropna(how='all')[tickers]
-    except Exception:
-        return pd.DataFrame()
-    if df.empty: return pd.DataFrame()
+    end = ref_date + timedelta(days=1)
 
-    avail      = df.index[df.index.date <= ref_date]
-    if len(avail) == 0: return pd.DataFrame()
+    try:
+        raw = yf.download(tickers, start=start, end=end, progress=False)
+        if isinstance(raw, pd.DataFrame):
+            df = raw['Close']
+        else:
+            df = raw
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        df = df.ffill().dropna(how='all')[tickers]
+    except:
+        return pd.DataFrame()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    avail = df.index[df.index.date <= ref_date]
+    if len(avail) == 0:
+        return pd.DataFrame()
+
     last_trade = avail[-1].date()
-    last_idx   = avail[-1]
+    last_idx = avail[-1]
 
     periods = {
-        '1D(%)':  {'days': 1,   'type': 'business'},
-        '1W(%)':  {'days': 5,   'type': 'business'},
+        '1D(%)': {'days': 1, 'type': 'business'},
+        '1W(%)': {'days': 5, 'type': 'business'},
         'MTD(%)': {'type': 'month_start'},
-        '1M(%)':  {'days': 21,  'type': 'business'},
-        '3M(%)':  {'days': 63,  'type': 'business'},
-        '6M(%)':  {'days': 126, 'type': 'business'},
+        '1M(%)': {'days': 21, 'type': 'business'},
+        '3M(%)': {'days': 63, 'type': 'business'},
+        '6M(%)': {'days': 126, 'type': 'business'},
         'YTD(%)': {'type': 'year_start'},
-        '1Y(%)':  {'days': 252, 'type': 'business'},
-        '3Y(%)':  {'days': 756, 'type': 'business'},
+        '1Y(%)': {'days': 252, 'type': 'business'},
+        '3Y(%)': {'days': 756, 'type': 'business'},
     }
+
     results = []
     for label, ticker in label2ticker.items():
-        row    = {'자산명': label}
+        row = {'자산명': label}
         series = df[ticker].dropna()
         if last_idx not in series.index or len(series) == 0:
             row['현재값'] = np.nan
-            for pk in periods: row[pk] = np.nan
-            results.append(row); continue
+            for pk in periods:
+                row[pk] = np.nan
+            results.append(row)
+            continue
+
         curr = series.loc[last_idx]
         row['현재값'] = curr
+
         for pk, cfg in periods.items():
             base = None
             try:
@@ -674,104 +682,217 @@ def get_perf_table_improved(label2ticker, ref_date=None):
                     d = series[series.index.date >= last_trade.replace(month=1, day=1)]
                     base = d.iloc[0] if len(d) else None
                 else:
-                    ci = series.index.get_loc(last_idx); lb = cfg['days']
+                    ci = series.index.get_loc(last_idx)
+                    lb = cfg['days']
                     base = series.iloc[ci - lb] if ci >= lb else (series.iloc[0] if ci > 0 else None)
+
                 row[pk] = (curr / base - 1) * 100 if (base is not None and not np.isnan(base) and base != 0) else np.nan
-            except Exception:
+            except:
                 row[pk] = np.nan
+
         results.append(row)
 
     df_r = pd.DataFrame(results)
+    
+    # 현재값 포맷
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
+    
+    # 모든 성과 컬럼을 format_number로 포맷 (Distribution과 동일 방식)
+    perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
+    for col in perf_cols:
+        if col in df_r.columns:
+            df_r[col] = df_r[col].apply(lambda x: format_number(x, 2) if pd.notnull(x) else "N/A")
+
     return df_r
 
 
-def get_sample_calculation_dates(label2ticker, ref_date=None):
-    if ref_date is None: ref_date = datetime.now().date()
-    try:
-        data  = yf.download(list(label2ticker.values())[0],
-                            start=ref_date - timedelta(days=4*365),
-                            end=ref_date + timedelta(days=1), progress=False)['Close'].dropna()
-        avail = data.index[data.index.date <= ref_date]
-        if len(avail) == 0: return None, None, None
-        last_trade = avail[-1].date()
-        ci         = data.index.get_loc(avail[-1])
-        actual     = {}
-        for p, d in {'1D':1,'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756}.items():
-            actual[p] = data.index[ci-d].date().strftime('%Y-%m-%d') if ci >= d else "데이터 부족"
-        for key, dt in [('MTD', last_trade.replace(day=1)), ('YTD', last_trade.replace(month=1, day=1))]:
-            d = data[data.index.date >= dt]
-            if len(d): actual[key] = d.index[0].date().strftime('%Y-%m-%d')
-        return list(label2ticker.keys())[0], last_trade.strftime('%Y-%m-%d'), actual
-    except Exception:
-        return None, None, None
+def style_perf_table_with_databars(df, perf_cols):
+    """이미 포맷된 데이터에 파스텔 히트맵만 적용"""
+    styled = df.copy().style
 
-
-@st.cache_data(show_spinner="차트 데이터 로딩 중...")
-def get_normalized_prices(label2ticker, months=6):
-    tickers = list(label2ticker.values())
-    end     = datetime.now().date()
-    start   = end - timedelta(days=months * 31)
-    df      = yf.download(tickers, start=start, end=end+timedelta(days=1), progress=False)['Close']
-    if isinstance(df, pd.Series): df = df.to_frame()
-    df   = df.ffill()[tickers]
-    norm = df / df.iloc[0] * 100
-    norm.columns = list(label2ticker.keys())
-    return norm
-
-
-def format_percentage(val):
-    if pd.isna(val): return "N/A"
-    try:    return f"{float(val):.2f}%"
-    except: return "N/A"
-
-def colorize_return(val):
-    if pd.isna(val): return ""
-    try:
-        v = float(val) if isinstance(val, (int, float)) else float(str(val).replace('%','').strip())
-    except: return ""
-    return "color: red;" if v > 0 else ("color: blue;" if v < 0 else "")
-
-def style_perf_table(df, perf_cols):
-    styled = df.style
     for col in perf_cols:
         if col in df.columns:
-            styled = styled.format({col: format_percentage}).applymap(colorize_return, subset=[col])
+            # 문자열에서 % 제거 후 숫자로 변환 (히트맵용)
+            numeric_vals = pd.to_numeric(
+                df[col].astype(str).str.replace('%', '').str.strip(),
+                errors='coerce'
+            )
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                
+                # 파스텔 히트맵 (숫자는 이미 format_number로 포맷되어 있음)
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap='RdYlGn',
+                    vmin=vmin,
+                    vmax=vmax,
+                    low=0.3,
+                    high=0.3
+                )
+
     return styled
 
 
 # ======================================================
-# ====== 페이지 함수 ===================================
+# Chart Functions for Page 1
 # ======================================================
-period_options = {"3개월": 3, "6개월": 6, "12개월": 12, "24개월": 24, "36개월": 36}
-
-def _render_chart(label2t, session_key, select_key):
-    if session_key not in st.session_state:
-        st.session_state[session_key] = 6
-    months = st.selectbox(
-        "기간 선택", options=list(period_options.keys()),
-        index=list(period_options.values()).index(st.session_state[session_key]),
-        key=select_key,
+def plot_monthly_returns(prices_df, asset_name):
+    monthly = prices_df.resample('M').last()
+    returns = monthly.pct_change().dropna() * 100
+    colors = ['#2ecc71' if x > 0 else '#e74c3c' for x in returns.iloc[:, 0]]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=returns.index.strftime('%Y-%m'),
+        y=returns.iloc[:, 0],
+        marker_color=colors,
+        text=[f"{v:.2f}%" for v in returns.iloc[:, 0]],
+        textposition='outside',
+    ))
+    fig.update_layout(
+        title=f'{asset_name}',
+        xaxis_title='Month',
+        yaxis_title='Return (%)',
+        template='plotly_white',
+        height=320,
+        showlegend=False,
+        margin=dict(t=30, b=20, l=30, r=20),
     )
-    mv = period_options[months]
-    st.session_state[session_key] = mv
-    with st.spinner("차트 로딩 중..."):
-        norm = get_normalized_prices(label2t, months=mv)
-        fig  = go.Figure()
-        for col in norm.columns:
-            fig.add_trace(go.Scatter(x=norm.index, y=norm[col], mode='lines', name=col))
-        fig.update_layout(
-            yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_dark", height=500,
-            legend=dict(orientation='h'),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    return fig
 
 
-# ─────────────────────────────────────────────────────
-# Page 1: 시장 성과
-# ─────────────────────────────────────────────────────
+def get_distribution_stats(prices_df, asset_name):
+    monthly = prices_df.resample('M').last()
+    returns = monthly.pct_change().dropna() * 100
+    returns_flat = returns.iloc[:, 0].values
+
+    stats = {
+        '자산': asset_name,
+        '평균(%)': format_number(np.mean(returns_flat), 2),
+        '표준편차(%)': format_number(np.std(returns_flat), 2),
+        '최소(%)': format_number(np.min(returns_flat), 2),
+        '25분위(%)': format_number(np.percentile(returns_flat, 25), 2),
+        '중앙값(%)': format_number(np.median(returns_flat), 2),
+        '75분위(%)': format_number(np.percentile(returns_flat, 75), 2),
+        '최대(%)': format_number(np.max(returns_flat), 2),
+    }
+    return stats
+
+
+def get_rolling_volatility_table(prices_df, asset_name, window=126):
+    returns = prices_df.pct_change().dropna()
+    rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
+    rolling_vol = rolling_vol.dropna()
+
+    monthly_vol = []
+    for i in range(1, 13):
+        cutoff = datetime.now() - timedelta(days=30*i)
+        mask = rolling_vol.index >= cutoff
+        if mask.any():
+            vol = rolling_vol[mask].iloc[-1]
+            monthly_vol.append({
+                '기간': cutoff.strftime('%Y-%m'),
+                '변동성(%)': format_number(vol, 2)
+            })
+
+    return pd.DataFrame(monthly_vol[::-1]) if monthly_vol else pd.DataFrame()
+
+
+def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
+    returns = prices_df.pct_change().dropna()
+    rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rolling_vol.index,
+        y=rolling_vol.values,
+        mode='lines',
+        line=dict(color='#3498db', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(52, 152, 219, 0.2)',
+    ))
+    fig.update_layout(
+        title=f'{asset_name}',
+        xaxis_title='Date',
+        yaxis_title='Volatility (%)',
+        template='plotly_white',
+        height=320,
+        margin=dict(t=30, b=20, l=30, r=20),
+    )
+    return fig
+
+
+def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
+    returns = prices_df.pct_change().dropna()
+    rolling_mean = returns.iloc[:, 0].rolling(window).mean() * 252
+    rolling_std = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252)
+    rolling_sharpe = (rolling_mean - risk_free_rate) / rolling_std
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=rolling_sharpe.index,
+        y=rolling_sharpe.values,
+        mode='lines',
+        line=dict(color='#f39c12', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(243, 156, 18, 0.2)',
+    ))
+    fig.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.5)
+    fig.update_layout(
+        title=f'{asset_name}',
+        xaxis_title='Date',
+        yaxis_title='Sharpe Ratio',
+        template='plotly_white',
+        height=320,
+        margin=dict(t=30, b=20, l=30, r=20),
+    )
+    return fig
+
+
+def style_distribution_stats(stats_df):
+    styled = stats_df.style
+
+    numeric_cols = [col for col in stats_df.columns if col != '자산']
+    if numeric_cols:
+        for col in numeric_cols:
+            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap='RdYlGn',
+                    vmin=vmin,
+                    vmax=vmax
+                )
+
+    return styled
+
+
+def style_volatility_table(vol_df):
+    styled = vol_df.style
+
+    if '변동성(%)' in vol_df.columns:
+        numeric_vals = pd.to_numeric(vol_df['변동성(%)'], errors='coerce')
+        valid_vals = numeric_vals[numeric_vals.notna()]
+        if len(valid_vals) > 0:
+            vmin = valid_vals.min()
+            vmax = valid_vals.max()
+            styled = styled.background_gradient(
+                subset=['변동성(%)'],
+                cmap='RdYlGn_r',
+                vmin=vmin,
+                vmax=vmax
+            )
+
+    return styled
+
+
+# ======================================================
+# Page 1: Market Performance
+# ======================================================
 def show_page1():
     st.title("🌐 Market Performance")
     update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
@@ -783,52 +904,217 @@ def show_page1():
         st.info("🔄 Update 버튼을 눌러 데이터를 불러오세요.")
         return
 
-    # 성과 테이블
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
+
     for title, label2t, h in [
-        ("📊 Equity",   STOCK_ETFS,  490),
-        ("🗠 Bond",   BOND_ETFS,   385),
-        ("💱 Currency",       CURRENCY,    315),
-        ("📈 Crypto",   CRYPTO,      385),
-        ("📕 Style ETF", STYLE_ETFS,  245),
-        ("📘 Sector ETF",   SECTOR_ETFS, 420),
+        ("📊 Equity", STOCK_ETFS, 489),
+        ("🗠 Bond", BOND_ETFS, 385),
+        ("💱 Currency", CURRENCY, 283),
+        ("📈 Crypto", CRYPTO, 385),
+        ("📕 Style ETF", STYLE_ETFS, 249),
+        ("📘 Sector ETF", SECTOR_ETFS, 425),
     ]:
         st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
             perf = get_perf_table_improved(label2t)
         if not perf.empty:
-            st.dataframe(style_perf_table(perf.set_index('자산명'), perf_cols),
-                         use_container_width=True, height=h)
+            st.dataframe(
+                style_perf_table_with_databars(perf.set_index('자산명'), perf_cols),
+                use_container_width=True,
+                height=h
+            )
 
     st.markdown("---")
 
-    # 차트 탭
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["📊 주가지수", "📗 섹터", "📙 스타일", "📋 기준일 정보"]
-    )
+    tab1, tab2, tab3 = st.tabs(["📊 국가", "📗 섹터", "📙 스타일"])
+
     with tab1:
-        st.subheader("✅ Performance")
-        _render_chart(STOCK_ETFS, "idx_months", "idx_sel")
+        st.subheader("✅ 국가")
+        render_comprehensive_chart(STOCK_ETFS, "stock_indices")
+
     with tab2:
-        st.subheader("☑️ 섹터 ETF 수익률")
-        _render_chart(SECTOR_ETFS, "sec_months", "sec_sel")
+        st.subheader("☑️ 섹터")
+        render_comprehensive_chart(SECTOR_ETFS, "sector")
+
     with tab3:
-        st.subheader("☑️ 스타일 ETF 수익률")
-        _render_chart(STYLE_ETFS, "sty_months", "sty_sel")
-    with tab4:
-        st.subheader("📋 계산 기준일")
-        lbl, last_d, adates = get_sample_calculation_dates(STOCK_ETFS)
-        if lbl and adates:
-            st.caption(f"**샘플 자산:** {lbl} | **최근 거래일:** {last_d}")
-            l1 = [f"{p}: {adates[p]}" for p in ['1D','1W','MTD','1M'] if p in adates]
-            st.caption("• " + " | ".join(l1))
-            l2 = [f"{p}: {adates[p]}" for p in ['3M','6M','YTD','1Y','3Y'] if p in adates]
-            st.caption("• " + " | ".join(l2))
+        st.subheader("☑️ 스타일")
+        render_comprehensive_chart(STYLE_ETFS, "style")
 
 
-# ─────────────────────────────────────────────────────
-# Page 2: LLM 분석
-# ─────────────────────────────────────────────────────
+def render_comprehensive_chart(label2t, chart_key):
+    if f"{chart_key}_period" not in st.session_state:
+        st.session_state[f"{chart_key}_period"] = "3년"
+
+    period_options = [p[0] for p in PERIOD_OPTIONS]
+    current_idx = period_options.index(st.session_state[f"{chart_key}_period"])
+
+    selected_period = st.selectbox(
+        "기간 선택",
+        options=period_options,
+        index=current_idx,
+        key=f"{chart_key}_select"
+    )
+
+    if selected_period != st.session_state[f"{chart_key}_period"]:
+        st.session_state[f"{chart_key}_period"] = selected_period
+        st.rerun()
+
+    months = next(m for n, m in PERIOD_OPTIONS if n == selected_period)
+
+    with st.spinner("데이터 분석 중..."):
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=months * 31)
+
+        try:
+            tickers = list(label2t.values())
+            prices_raw = yf.download(tickers, start=start_date, end=end_date, progress=False)
+
+            if isinstance(prices_raw, pd.DataFrame):
+                prices_data = prices_raw['Close']
+            else:
+                prices_data = prices_raw.to_frame()
+
+            if isinstance(prices_data, pd.Series):
+                prices_data = prices_data.to_frame()
+
+            prices_data.columns = list(label2t.keys())
+            prices_data = prices_data.ffill().dropna()
+
+        except Exception as e:
+            st.error(f"데이터 다운로드 실패: {str(e)}")
+            return
+
+        st.subheader("📈 Cumulative Returns")
+        norm = prices_data / prices_data.iloc[0] * 100
+        fig = go.Figure()
+        colors_list = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+                      '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#aec7e8', '#ffbb78']
+        for i, col in enumerate(norm.columns):
+            fig.add_trace(go.Scatter(
+                x=norm.index,
+                y=norm[col],
+                mode='lines',
+                name=col,
+                line=dict(color=colors_list[i % len(colors_list)], width=2.5),
+            ))
+        fig.update_layout(
+            yaxis_title="100 기준 누적수익률(%)",
+            template="plotly_white",
+            height=420,
+            legend=dict(orientation='h', y=1.15, x=0),
+            hovermode='x unified',
+            margin=dict(b=80)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        assets = list(label2t.keys())
+
+        st.subheader("📊 Monthly Returns")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_monthly_returns(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_monthly_returns(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
+
+        st.subheader("📉 Distribution of Monthly Returns")
+        
+        # 모든 자산의 분포 통계를 하나의 테이블로 합치기
+        all_stats = []
+        for asset in assets:
+            asset_data = prices_data[[asset]]
+            stats = get_distribution_stats(asset_data, asset)
+            all_stats.append(stats)
+        
+        # 통계 테이블 생성
+        stats_df = pd.DataFrame(all_stats)
+        
+        # 각 열별로 히트맵 적용 (파스텔 색상)
+        styled = stats_df.style
+        numeric_cols = [col for col in stats_df.columns if col != '자산']
+        
+        for col in numeric_cols:
+            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap='RdYlGn',
+                    vmin=vmin,
+                    vmax=vmax,
+                    low=0.3,  # 파스텔 느낌
+                    high=0.3
+                )
+        
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        st.subheader("📈 Rolling Volatility (6-Month)")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_rolling_volatility_visual(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_rolling_volatility_visual(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
+
+        st.subheader("⭐ Rolling Sharpe Ratio (6-Month)")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_rolling_sharpe(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_rolling_sharpe(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
+
+
+# ======================================================
+# Page 2: LLM Analysis
+# ======================================================
 def show_page2():
     st.title("🤖 LLM 분석 — 뉴스 감성 분석")
     st.caption("Yahoo Finance RSS에서 수집한 최근 3일 뉴스를 FinBERT로 감성 분석합니다.")
@@ -840,7 +1126,7 @@ def show_page2():
         run_btn = st.button("📡 분석 시작", type="primary", use_container_width=True, key="p2_run")
 
     etf_ticker = SECTOR_ETFS[selected]
-    cache_key  = f'llm_{etf_ticker}'
+    cache_key = f'llm_{etf_ticker}'
 
     if run_btn:
         progress = st.progress(0, text="Holdings 수집 중...")
@@ -868,48 +1154,43 @@ def show_page2():
         return
 
     news_list = st.session_state[cache_key]
-    df        = build_sentiment_df(news_list)
+    df = build_sentiment_df(news_list)
     if df.empty:
         st.warning("분석 결과가 없습니다.")
         return
 
-    # ── 요약 메트릭 ─────────────────────────────────────
     avg_s = df['Sentiment'].mean()
-    pos   = (df['Sentiment_Category'] == 'Positive').sum()
-    neg   = (df['Sentiment_Category'] == 'Negative').sum()
-    neu   = (df['Sentiment_Category'] == 'Neutral').sum()
+    pos = (df['Sentiment_Category'] == 'Positive').sum()
+    neg = (df['Sentiment_Category'] == 'Negative').sum()
+    neu = (df['Sentiment_Category'] == 'Neutral').sum()
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total",  len(df))
-    c2.metric("🟢 Positive",  int(pos))
-    c3.metric("🔴 Negative",  int(neg))
+    c1.metric("Total", len(df))
+    c2.metric("🟢 Positive", int(pos))
+    c3.metric("🔴 Negative", int(neg))
     c4.metric("Average", f"{avg_s:+.3f}")
 
     st.markdown("---")
 
-    # ── 차트 1: 종목별 평균 감정 가로 막대 ──────────────
     render_sentiment_bar_chart(df, selected)
 
-    # ── 차트 2: 히스토그램 + 카운트플롯 ────────────────
     col_h, col_c = st.columns(2)
     with col_h:
         st.plotly_chart(create_sentiment_histogram(df), use_container_width=True)
     with col_c:
         st.plotly_chart(create_sentiment_countplot(df), use_container_width=True)
 
-    # ── 차트 3: 박스플롯 ────────────────────────────────
     st.plotly_chart(create_sentiment_boxplot(df), use_container_width=True)
 
     st.markdown("---")
 
-    # ── 전체 뉴스 테이블 (긍정/부정/중립 모두 포함) ─────
     st.markdown(f"##### 📋 관련 뉴스 전체 목록 ({len(df)}건)")
     render_news_table(df)
 
 
-# ─────────────────────────────────────────────────────
-# Page 3: 애널리스트 & 밸류에이션
-# ─────────────────────────────────────────────────────
+# ======================================================
+# Page 3: Analyst & Valuation
+# ======================================================
 def show_page3():
     st.title("👨‍💼 애널리스트 & 밸류에이션")
     st.caption(
@@ -925,7 +1206,7 @@ def show_page3():
         run_btn = st.button("🔍 조회", type="primary", use_container_width=True, key="p3_run")
 
     etf_ticker = SECTOR_ETFS[selected]
-    cache_key  = f'analyst_{etf_ticker}'
+    cache_key = f'analyst_{etf_ticker}'
 
     if run_btn:
         progress = st.progress(0, text="Holdings 수집 중...")
@@ -936,7 +1217,7 @@ def show_page3():
         ticker_syms = [h['ticker'] for h in holdings]
         progress.progress(15, text=f"✅ {len(ticker_syms)}개 종목 — 애널리스트 데이터 수집 중...")
 
-        analyst_df   = get_analyst_report_data(ticker_syms)
+        analyst_df = get_analyst_report_data(ticker_syms)
         progress.progress(55, text="✅ 애널리스트 수집 완료 — 밸류에이션 수집 중...")
         valuation_df = get_valuation_eps_table(ticker_syms)
         progress.progress(100, text="✅ 조회 완료!")
@@ -944,21 +1225,20 @@ def show_page3():
         progress.empty()
 
         st.session_state[cache_key] = {
-            'analyst':   analyst_df,
+            'analyst': analyst_df,
             'valuation': valuation_df,
-            'holdings':  holdings,
+            'holdings': holdings,
         }
 
     if cache_key not in st.session_state:
         st.info("섹터를 선택하고 '🔍 조회' 버튼을 누르세요.")
         return
 
-    data       = st.session_state[cache_key]
+    data = st.session_state[cache_key]
     analyst_df = data['analyst']
-    val_df     = data['valuation']
-    holdings   = data['holdings']
+    val_df = data['valuation']
+    holdings = data['holdings']
 
-    # ── Holdings 정보 ────────────────────────────────────
     st.subheader(f"📦 {selected} — Top Holdings")
     holdings_df = pd.DataFrame(holdings)
     st.dataframe(holdings_df, use_container_width=True,
@@ -966,36 +1246,40 @@ def show_page3():
 
     st.markdown("---")
 
-    # ── 애널리스트 등급 테이블 ────────────────────────────
     st.subheader("👨‍💼 애널리스트 등급 & 목표주가")
     analyst_sorted = analyst_df.sort_values('상승여력(%)', ascending=False, na_position='last')
 
     def color_upside(val):
         try:
             v = float(val)
-            if v > 10:  return 'color: #2ecc71; font-weight:bold'
-            if v < 0:   return 'color: #e74c3c; font-weight:bold'
+            if v > 10:
+                return 'color: #2ecc71; font-weight:bold'
+            if v < 0:
+                return 'color: #e74c3c; font-weight:bold'
             return ''
-        except: return ''
+        except:
+            return ''
 
     def color_rating(val):
         try:
             v = float(val)
-            if v <= 2:   return 'color: #2ecc71; font-weight:bold'
-            if v >= 4:   return 'color: #e74c3c; font-weight:bold'
+            if v <= 2:
+                return 'color: #2ecc71; font-weight:bold'
+            if v >= 4:
+                return 'color: #e74c3c; font-weight:bold'
             return 'color: #f39c12'
-        except: return ''
+        except:
+            return ''
 
-    fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.1f}%'}
+    fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.2f}%'}
     styled_a = (analyst_sorted.style
                 .format(fmt, na_rep='N/A')
-                .applymap(color_upside,  subset=['상승여력(%)'])
-                .applymap(color_rating,  subset=['등급 점수'])
-                .background_gradient(subset=['상승여력(%)'], cmap='RdYlGn', vmin=-20, vmax=40))
+                .applymap(color_upside, subset=['상승여력(%)'])
+                .applymap(color_rating, subset=['등급 점수'])
+                .background_gradient(subset=['상승여력(%)'], cmap='RdYlGn', vmin=-20, vmax=40, low=0.3, high=0.3))
     st.dataframe(styled_a, use_container_width=True,
                  height=min(500, 40 + len(analyst_sorted) * 35))
 
-    # ── 상승여력 막대 차트 ───────────────────────────────
     if not analyst_sorted['상승여력(%)'].isna().all():
         fig_up = go.Figure()
         df_plot = analyst_sorted.dropna(subset=['상승여력(%)'])
@@ -1006,38 +1290,39 @@ def show_page3():
             text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
             textposition='outside',
         ))
-        fig_up.add_hline(y=0, line_dash='dash', line_color='white', opacity=0.4)
+        fig_up.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.4)
         fig_up.update_layout(
             title='종목별 애널리스트 목표주가 상승여력',
             xaxis_title='Ticker', yaxis_title='상승여력 (%)',
-            template='plotly_dark', height=380,
+            template='plotly_white', height=380,
         )
         st.plotly_chart(fig_up, use_container_width=True)
 
     st.markdown("---")
 
-    # ── 밸류에이션 & EPS 테이블 ──────────────────────────
     st.subheader("🔍 밸류에이션 & EPS")
     val_sorted = val_df.sort_values('EPS 상승률(%)', ascending=False, na_position='last')
     fmt_v = {'Trailing PE': '{:.1f}', 'Forward PE': '{:.1f}',
-             'Trailing EPS': '{:.2f}', 'Forward EPS': '{:.2f}', 'EPS 상승률(%)': '{:.1f}%'}
+             'Trailing EPS': '{:.2f}', 'Forward EPS': '{:.2f}', 'EPS 상승률(%)': '{:.2f}%'}
 
     def color_eps(val):
         try:
             v = float(val)
-            if v > 5:  return 'color: #2ecc71; font-weight:bold'
-            if v < 0:  return 'color: #e74c3c; font-weight:bold'
+            if v > 5:
+                return 'color: #2ecc71; font-weight:bold'
+            if v < 0:
+                return 'color: #e74c3c; font-weight:bold'
             return ''
-        except: return ''
+        except:
+            return ''
 
     styled_v = (val_sorted.style
                 .format(fmt_v, na_rep='N/A')
                 .applymap(color_eps, subset=['EPS 상승률(%)'])
-                .background_gradient(subset=['EPS 상승률(%)'], cmap='RdYlGn'))
+                .background_gradient(subset=['EPS 상승률(%)'], cmap='RdYlGn', low=0.3, high=0.3))
     st.dataframe(styled_v, use_container_width=True,
                  height=min(500, 40 + len(val_sorted) * 35))
 
-    # ── PE 비교 차트 ─────────────────────────────────────
     pe_df = val_sorted.dropna(subset=['Trailing PE', 'Forward PE'])
     if not pe_df.empty:
         fig_pe = go.Figure()
@@ -1052,20 +1337,19 @@ def show_page3():
         fig_pe.update_layout(
             title='Trailing PE vs Forward PE',
             xaxis_title='Ticker', yaxis_title='PE Ratio',
-            barmode='group', template='plotly_dark', height=380,
+            barmode='group', template='plotly_white', height=380,
         )
         st.plotly_chart(fig_pe, use_container_width=True)
 
 
 # ======================================================
-# ====== 사이드바 네비게이션 & 메인 라우팅 =============
+# Main Navigation
 # ======================================================
-
 with st.sidebar:
     logo_url = "https://img.inhr.co.kr/static/careerlink/DSGN/250310110803368lsi.svg"
     st.markdown(
         f"""
-        <div style="display: flex; ">
+        <div style="display: flex;">
             <img src="{logo_url}" width="200px" style="display: block;">
         </div>
         """,
@@ -1081,26 +1365,25 @@ with st.sidebar:
     )
     st.markdown("---")
     st.markdown('<div style="font-size:0.85rem;">Data source: '
-                    '<a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a></div>',
-                    unsafe_allow_html=True)
-    
+                '<a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a></div>',
+                unsafe_allow_html=True)
+
     st.caption(f"Last visit: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    st.divider() # 구분선 추가
-    st.caption(f"© 2026 KB Asset Management.")
+    st.divider()
+    st.caption("© 2026 KB Asset Management.")
     with st.expander("📄 MIT License Details"):
         st.markdown("""
         **MIT License**
-        
+
         Copyright (c) 2026 **KB Asset Management**
-        
+
         Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files...
-        
+
         ---
         *The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.*
-        
+
         `THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED...`
         """, help="Click to see the full license text.")
-
 
 
 if page == "📊 시장 성과":
