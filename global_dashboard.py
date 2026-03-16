@@ -1088,8 +1088,7 @@ with st.sidebar:
         key="nav_page",
     )
     st.markdown("---")
-    st.caption("Data source: Yahoo Finance")
-    st.markdown('<div style="font-size:0.85rem;">Data: '
+    st.markdown('<div style="font-size:0.85rem;">Data source: '
                     '<a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a></div>',
                     unsafe_allow_html=True)
     
