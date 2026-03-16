@@ -422,7 +422,7 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
              .sort_values('Avg', ascending=True))
 
     company_map = df.drop_duplicates('Ticker').set_index('Ticker')['Company'].to_dict()
-    colors = ['#2ecc71' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
+    colors = ['#FFBC00' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
               for v in agg['Avg']]
 
     fig = go.Figure()
@@ -457,7 +457,7 @@ def create_sentiment_histogram(df: pd.DataFrame) -> go.Figure:
     fig.add_trace(go.Histogram(
         x=df['Sentiment'], nbinsx=20,
         name='Sentiment Distribution',
-        marker_color='rgba(235, 0, 140, 0.7)', opacity=0.8,
+        marker_color='rgba(255, 188, 0, 0.7)', opacity=0.8,
     ))
     hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -483,7 +483,7 @@ def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
     ).reset_index()
     counts.columns = ['Category', 'Count']
     color_map = {
-        'Positive': 'rgba(235,0,140,0.8)',
+        'Positive': 'rgba(255,188,0,0.8)',
         'Neutral':  'rgba(102,194,165,0.8)',
         'Negative': 'rgba(65,105,225,0.8)',
     }
@@ -780,7 +780,7 @@ def show_page1():
         st.session_state['p1_updated'] = True
 
     if not st.session_state.get('p1_updated', False):
-        st.info("'🔄 Update' 버튼을 눌러 데이터를 불러오세요.")
+        st.info("🔄 Update 버튼을 눌러 데이터를 불러오세요.")
         return
 
     # 성과 테이블
@@ -1002,7 +1002,7 @@ def show_page3():
         fig_up.add_trace(go.Bar(
             x=df_plot['Ticker'],
             y=df_plot['상승여력(%)'],
-            marker_color=['#2ecc71' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
+            marker_color=['#FFBC00' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
             text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
             textposition='outside',
         ))
@@ -1043,11 +1043,11 @@ def show_page3():
         fig_pe = go.Figure()
         fig_pe.add_trace(go.Bar(
             x=pe_df['Ticker'], y=pe_df['Trailing PE'],
-            name='Trailing PE', marker_color='rgba(65,105,225,0.8)',
+            name='Trailing PE', marker_color='rgba(96,88,76,0.9)',
         ))
         fig_pe.add_trace(go.Bar(
             x=pe_df['Ticker'], y=pe_df['Forward PE'],
-            name='Forward PE', marker_color='rgba(235,0,140,0.7)',
+            name='Forward PE', marker_color='rgba(255,188,0,0.7)',
         ))
         fig_pe.update_layout(
             title='Trailing PE vs Forward PE',
