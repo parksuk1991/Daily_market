@@ -22,7 +22,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(
-    page_title="Global Market Monitoring",
+    page_title="시장 성과",
     page_icon="🌐",
     layout="wide"
 )
