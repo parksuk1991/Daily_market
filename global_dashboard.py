@@ -921,7 +921,7 @@ def show_page1():
 
     st.markdown("---")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 주가지수", "📗 섹터", "📙 스타일", "계산 기준일 정보"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 주가지수", "📗 섹터", "📙 스타일", "📋 계산 기준일"])
 
     with tab1:
         st.subheader("✅ Stock Indices - Comprehensive Analysis")
