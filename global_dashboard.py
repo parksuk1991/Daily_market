@@ -772,20 +772,8 @@ def _render_chart(label2t, session_key, select_key):
 # Page 1: 시장 성과
 # ─────────────────────────────────────────────────────
 def show_page1():
-    # 헤더
-    col_t, col_img = st.columns([9, 1])
-    with col_t:
-        st.title("🌐 Market Performance")
-        update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
-    with col_img:
-        try:
-            img_url = ("https://amateurphotographer.com/wp-content/uploads/sites/7/"
-                       "2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg")
-            resp = requests.get(img_url, timeout=5)
-            resp.raise_for_status()
-            st.image(Image.open(BytesIO(resp.content)), width=150)
-        except Exception:
-            pass
+    st.title("🌐 Market Performance")
+    update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
 
     if update_clicked:
         st.session_state['p1_updated'] = True
@@ -844,7 +832,7 @@ def show_page2():
     st.title("🤖 LLM 분석 — 뉴스 감성 분석")
     st.caption("Yahoo Finance RSS에서 수집한 최근 3일 뉴스를 FinBERT로 감성 분석합니다.")
 
-    col1, col2 = st.columns([3, 1])
+    col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
     with col1:
         selected = st.selectbox("분석할 섹터 선택", list(SECTOR_ETFS.keys()), key="p2_sector")
     with col2:
@@ -929,7 +917,7 @@ def show_page3():
         "• Trailing PE/EPS: 최근 12M  |  Forward PE/EPS: 선행 12M"
     )
 
-    col1, col2 = st.columns([3, 1])
+    col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
     with col1:
         selected = st.selectbox("섹터 선택", list(SECTOR_ETFS.keys()), key="p3_sector")
     with col2:
@@ -1072,12 +1060,15 @@ def show_page3():
 # ====== 사이드바 네비게이션 & 메인 라우팅 =============
 # ======================================================
 with st.sidebar:
+    # KB자산운용 로고로 변경
+    # 공식 KB자산운용 로고 URL을 사용하거나, 아래의 댓글 처리된 부분을 수정하세요
     try:
-        img_url = ("https://amateurphotographer.com/wp-content/uploads/sites/7/"
-                   "2017/08/Screen-Shot-2017-08-23-at-22.29.18.png?w=600.jpg")
-        resp = requests.get(img_url, timeout=4)
-        st.image(Image.open(BytesIO(resp.content)), use_container_width=True)
+        kb_logo_url = "https://www.kbam.co.kr/img/logo_header.png"  # KB자산운용 공식 로고 URL
+        resp = requests.get(kb_logo_url, timeout=4, verify=False)
+        if resp.status_code == 200:
+            st.image(Image.open(BytesIO(resp.content)), use_container_width=True)
     except Exception:
+        # 로고 로드 실패 시 텍스트만 표시
         pass
 
     st.title("💡 Global Market")
