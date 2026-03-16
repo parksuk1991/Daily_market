@@ -693,6 +693,8 @@ def get_perf_table_improved(label2ticker, ref_date=None):
         results.append(row)
 
     df_r = pd.DataFrame(results)
+    
+    # 현재값 포맷
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
 
@@ -700,32 +702,29 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """소수점 정확히 2자리 + 파스텔 데이터바 히트맵"""
+    """소수점 정확히 2자리 + 파스텔 히트맵 (Distribution 방식)"""
     styled = df.copy().style
 
     for col in perf_cols:
         if col in df.columns:
-            # 소수점 정확히 2자리로 포맷
+            # format_number 함수와 동일한 방식으로 포맷
             styled = styled.format({col: lambda x: f"{float(x):.2f}%" if pd.notnull(x) else 'N/A'})
             
-            # 숫자 값 추출
-            numeric_vals = pd.to_numeric(
-                df[col].astype(str).str.replace('%', '').str.strip(),
-                errors='coerce'
-            )
+            # 숫자 값으로 히트맵 계산
+            numeric_vals = pd.to_numeric(df[col], errors='coerce')
             valid_vals = numeric_vals[numeric_vals.notna()]
             
             if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
-                # 파스텔 색상 데이터바 (가시성 좋음)
+                # 파스텔 히트맵
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='RdYlGn',
                     vmin=vmin,
                     vmax=vmax,
-                    low=0.3,  # 파스텔 느낌
+                    low=0.3,
                     high=0.3
                 )
 
@@ -934,7 +933,6 @@ def show_page1():
     with tab3:
         st.subheader("☑️ Style ETF - Comprehensive Analysis")
         render_comprehensive_chart(STYLE_ETFS, "style")
-        
 
 
 def render_comprehensive_chart(label2t, chart_key):
