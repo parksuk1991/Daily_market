@@ -36,7 +36,7 @@ BOND_ETFS = {
     '신흥국채(EMB)': 'EMB', '미국 하이일드(HYG)': 'HYG', '미국 물가연동(TIP)': 'TIP',
     '미국 단기회사채(VCSH)': 'VCSH', '글로벌국채(BNDX)': 'BNDX', '미국 국채(BND)': 'BND',
     '단기국채(SPTS)': 'SPTS',
-} #'달러인덱스': 'DX-Y.NYB', 일단 제외했는데 데이터 왜 못 불러오는지 확인 필요
+}
 CURRENCY = { 
     '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
     '달러-엔': 'JPY=X', '원-엔': 'JPYKRW=X', '달러-유로': 'EURUSD=X',
@@ -537,7 +537,7 @@ def render_news_table(df: pd.DataFrame):
 
     styled = (display.style
               .applymap(color_sent, subset=['Sentiment'])
-              .format({'Sentiment': '{:.2f}'}))  # 소수점 정확히 2자리
+              .format({'Sentiment': '{:.2f}'}))
     st.dataframe(
         styled,
         column_config={'URL': st.column_config.LinkColumn('URL')},
@@ -694,16 +694,14 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
     df_r = pd.DataFrame(results)
     
-    # 현재값 포맷
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
     
-    # 모든 성과 컬럼을 format_number로 포맷 (Distribution과 동일 방식)
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
     for col in perf_cols:
         if col in df_r.columns:
             df_r[col] = df_r[col].apply(lambda x: format_number(x, 2) if pd.notnull(x) else "N/A")
-
+    
     return df_r
 
 
@@ -713,7 +711,6 @@ def style_perf_table_with_databars(df, perf_cols):
 
     for col in perf_cols:
         if col in df.columns:
-            # 문자열에서 % 제거 후 숫자로 변환 (히트맵용)
             numeric_vals = pd.to_numeric(
                 df[col].astype(str).str.replace('%', '').str.strip(),
                 errors='coerce'
@@ -724,7 +721,6 @@ def style_perf_table_with_databars(df, perf_cols):
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
-                # 파스텔 히트맵 (숫자는 이미 format_number로 포맷되어 있음)
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='RdYlGn',
@@ -738,28 +734,114 @@ def style_perf_table_with_databars(df, perf_cols):
 
 
 # ======================================================
-# Chart Functions for Page 1
+# Horizon Chart 유틸 함수
+# ======================================================
+def _make_horizon_figure(
+    series: pd.Series,
+    bands: int = 4,
+    colors_pos=None,
+    colors_neg=None,
+    title: str = "",
+    height: int = 120,
+    value_suffix: str = ""
+) -> go.Figure:
+    """
+    단일 시계열을 horizon chart 스타일(리본 오버레이)로 표현.
+    series: index = datetime, values = float
+    """
+    if series.empty:
+        return go.Figure()
+
+    if colors_pos is None:
+        colors_pos = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26']  # 밝은 → 진한 (양수)
+    if colors_neg is None:
+        colors_neg = ['#deebf7', '#9ecae1', '#6baed6', '#3182bd']  # 밝은 → 진한 (음수)
+
+    s = series.astype(float).copy()
+    max_abs = np.nanmax(np.abs(s.values))
+    if max_abs == 0 or np.isnan(max_abs):
+        max_abs = 1.0
+
+    band_size = max_abs / bands
+
+    fig = go.Figure()
+
+    for b in range(bands):
+        low = band_size * b
+        high = band_size * (b + 1)
+
+        # 양수 영역
+        upper_pos = s.clip(lower=0)
+        lower_pos = upper_pos.clip(upper=low)
+        upper_pos = upper_pos.clip(upper=high)
+        band_pos = (upper_pos - lower_pos).replace(0, np.nan)
+
+        if not band_pos.isna().all():
+            fig.add_trace(go.Scatter(
+                x=band_pos.index,
+                y=band_pos.values,
+                mode='lines',
+                line=dict(width=0),
+                stackgroup='pos',
+                fill='tonexty',
+                fillcolor=colors_pos[b],
+                hoverinfo='skip',
+                showlegend=False,
+            ))
+
+        # 음수 영역(위로 뒤집어서 그림)
+        lower_neg = s.clip(upper=0)
+        upper_neg = lower_neg.clip(upper=-low)
+        lower_neg = lower_neg.clip(upper=-high)
+        band_neg = (upper_neg - lower_neg).replace(0, np.nan)
+
+        if not band_neg.isna().all():
+            fig.add_trace(go.Scatter(
+                x=band_neg.index,
+                y=-band_neg.values,  # 위로 뒤집기
+                mode='lines',
+                line=dict(width=0),
+                stackgroup='neg',
+                fill='tonexty',
+                fillcolor=colors_neg[b],
+                hoverinfo='skip',
+                showlegend=False,
+            ))
+
+    # Hover용 실제 값 라인(얇게)
+    fig.add_trace(go.Scatter(
+        x=s.index,
+        y=s.values,
+        mode='lines',
+        line=dict(color='rgba(0,0,0,0)', width=1),
+        hovertemplate='%{x|%Y-%m-%d}<br>Value: %{y:.2f}' + value_suffix + '<extra></extra>',
+        showlegend=False,
+    ))
+
+    fig.update_layout(
+        title=title,
+        template='plotly_white',
+        height=height,
+        margin=dict(t=25, b=10, l=10, r=10),
+        xaxis=dict(showgrid=False, showline=False, zeroline=False),
+        yaxis=dict(showgrid=False, showline=False, zeroline=True, visible=False),
+    )
+    return fig
+
+
+# ======================================================
+# Chart Functions for Page 1 (수정)
 # ======================================================
 def plot_monthly_returns(prices_df, asset_name):
     monthly = prices_df.resample('M').last()
     returns = monthly.pct_change().dropna() * 100
-    colors = ['#2ecc71' if x > 0 else '#e74c3c' for x in returns.iloc[:, 0]]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=returns.index.strftime('%Y-%m'),
-        y=returns.iloc[:, 0],
-        marker_color=colors,
-        text=[f"{v:.2f}%" for v in returns.iloc[:, 0]],
-        textposition='outside',
-    ))
-    fig.update_layout(
+    series = returns.iloc[:, 0]
+    fig = _make_horizon_figure(
+        series,
+        bands=4,
         title=f'{asset_name}',
-        xaxis_title='Month',
-        yaxis_title='Return (%)',
-        template='plotly_white',
-        height=320,
-        showlegend=False,
-        margin=dict(t=30, b=20, l=30, r=20),
+        height=110,
+        value_suffix='%'
     )
     return fig
 
@@ -804,22 +886,13 @@ def get_rolling_volatility_table(prices_df, asset_name, window=126):
 def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
     returns = prices_df.pct_change().dropna()
     rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=rolling_vol.index,
-        y=rolling_vol.values,
-        mode='lines',
-        line=dict(color='#3498db', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(52, 152, 219, 0.2)',
-    ))
-    fig.update_layout(
+    rolling_vol = rolling_vol.dropna()
+    fig = _make_horizon_figure(
+        rolling_vol,
+        bands=4,
         title=f'{asset_name}',
-        xaxis_title='Date',
-        yaxis_title='Volatility (%)',
-        template='plotly_white',
-        height=320,
-        margin=dict(t=30, b=20, l=30, r=20),
+        height=110,
+        value_suffix='%'
     )
     return fig
 
@@ -829,23 +902,13 @@ def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
     rolling_mean = returns.iloc[:, 0].rolling(window).mean() * 252
     rolling_std = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252)
     rolling_sharpe = (rolling_mean - risk_free_rate) / rolling_std
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=rolling_sharpe.index,
-        y=rolling_sharpe.values,
-        mode='lines',
-        line=dict(color='#f39c12', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(243, 156, 18, 0.2)',
-    ))
-    fig.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.5)
-    fig.update_layout(
+    rolling_sharpe = rolling_sharpe.dropna()
+    fig = _make_horizon_figure(
+        rolling_sharpe,
+        bands=4,
         title=f'{asset_name}',
-        xaxis_title='Date',
-        yaxis_title='Sharpe Ratio',
-        template='plotly_white',
-        height=320,
-        margin=dict(t=30, b=20, l=30, r=20),
+        height=110,
+        value_suffix=''
     )
     return fig
 
@@ -888,6 +951,31 @@ def style_volatility_table(vol_df):
             )
 
     return styled
+
+
+# ======================================================
+# Maximum Drawdown 함수 (추가)
+# ======================================================
+def compute_drawdown(prices_df: pd.DataFrame) -> pd.Series:
+    """가격 시계열에서 누적 최대 낙폭(%) 시계열 계산"""
+    series = prices_df.iloc[:, 0].dropna().astype(float)
+    roll_max = series.cummax()
+    dd = (series / roll_max - 1) * 100
+    return dd
+
+
+def plot_max_drawdown(prices_df, asset_name):
+    dd = compute_drawdown(prices_df)
+    if dd.empty:
+        return go.Figure()
+    fig = _make_horizon_figure(
+        dd,
+        bands=4,
+        title=f'{asset_name}',
+        height=110,
+        value_suffix='%'
+    )
+    return fig
 
 
 # ======================================================
@@ -941,6 +1029,9 @@ def show_page1():
         render_comprehensive_chart(STYLE_ETFS, "style")
 
 
+# ======================================================
+# Comprehensive Chart Renderer (Page 1)
+# ======================================================
 def render_comprehensive_chart(label2t, chart_key):
     if f"{chart_key}_period" not in st.session_state:
         st.session_state[f"{chart_key}_period"] = "3년"
@@ -1009,7 +1100,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
         assets = list(label2t.keys())
 
-        st.subheader("📊 Monthly Returns")
+        st.subheader("📊 Monthly Returns (Horizon)")
         for i in range(0, len(assets), 2):
             cols = st.columns(2)
 
@@ -1034,17 +1125,14 @@ def render_comprehensive_chart(label2t, chart_key):
 
         st.subheader("📉 Distribution of Monthly Returns")
         
-        # 모든 자산의 분포 통계를 하나의 테이블로 합치기
         all_stats = []
         for asset in assets:
             asset_data = prices_data[[asset]]
             stats = get_distribution_stats(asset_data, asset)
             all_stats.append(stats)
         
-        # 통계 테이블 생성
         stats_df = pd.DataFrame(all_stats)
         
-        # 각 열별로 히트맵 적용 (파스텔 색상)
         styled = stats_df.style
         numeric_cols = [col for col in stats_df.columns if col != '자산']
         
@@ -1059,13 +1147,13 @@ def render_comprehensive_chart(label2t, chart_key):
                     cmap='RdYlGn',
                     vmin=vmin,
                     vmax=vmax,
-                    low=0.3,  # 파스텔 느낌
+                    low=0.3,
                     high=0.3
                 )
         
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        st.subheader("📈 Rolling Volatility (6-Month)")
+        st.subheader("📈 Rolling Volatility (6-Month, Horizon)")
         for i in range(0, len(assets), 2):
             cols = st.columns(2)
 
@@ -1088,7 +1176,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 except Exception as e:
                     cols[1].error(f"{asset2} 실패")
 
-        st.subheader("⭐ Rolling Sharpe Ratio (6-Month)")
+        st.subheader("⭐ Rolling Sharpe Ratio (6-Month, Horizon)")
         for i in range(0, len(assets), 2):
             cols = st.columns(2)
 
@@ -1107,6 +1195,29 @@ def render_comprehensive_chart(label2t, chart_key):
                 try:
                     with cols[1]:
                         fig = plot_rolling_sharpe(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패")
+
+        st.subheader("📉 Maximum Drawdown (Horizon)")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_max_drawdown(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_max_drawdown(asset2_data, asset2)
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
                     cols[1].error(f"{asset2} 실패")
@@ -1364,7 +1475,7 @@ with st.sidebar:
         key="nav_page",
     )
     st.markdown("---")
-    st.markdown('<div style="font-size:0.85rem;">Data source: '
+    st.markdown('<div style="font-size:0.85rem;\">Data source: '
                 '<a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a></div>',
                 unsafe_allow_html=True)
 
@@ -1384,7 +1495,6 @@ with st.sidebar:
 
         `THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED...`
         """, help="Click to see the full license text.")
-
 
 if page == "📊 시장 성과":
     show_page1()
