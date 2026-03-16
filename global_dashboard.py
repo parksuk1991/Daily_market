@@ -780,6 +780,7 @@ def show_page1():
         st.session_state['p1_updated'] = True
 
     if not st.session_state.get('p1_updated', False):
+        st.info("🔄 Update 버튼을 눌러 데이터를 불러오세요.")
         return
 
     # 성과 테이블
