@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 import requests
 from PIL import Image
 from io import BytesIO
@@ -706,7 +707,6 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """이미 포맷된 데이터에 파스텔 히트맵만 적용"""
     styled = df.copy().style
 
     for col in perf_cols:
@@ -734,117 +734,46 @@ def style_perf_table_with_databars(df, perf_cols):
 
 
 # ======================================================
-# Horizon Chart util (multi-series, faceted)
+# Time‑series helper (multi panel, shared x)
 # ======================================================
-def _make_horizon_multi(
-    df_values: pd.DataFrame,
-    title: str,
-    bands: int = 4,
-    height_per_series: int = 24,
-    value_suffix: str = ""
-) -> go.Figure:
+def make_multi_panel_line(df: pd.DataFrame, title: str, y_label: str):
     """
-    df_values: index = datetime, columns = asset names
-    각 column을 개별 horizon strip으로 layout yaxis들에 배치 (공통 x축).
+    df: index=datetime, columns=assets
+    각 자산을 한 행으로, x축은 공유하는 subplot 생성.
     """
-    if df_values.empty:
-        return go.Figure()
-
-    assets = list(df_values.columns)
+    assets = list(df.columns)
     n = len(assets)
-
-    colors_pos = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26']
-    colors_neg = ['#deebf7', '#9ecae1', '#6baed6', '#3182bd']
-
-    fig = go.Figure()
-
-    # 전체 값 스케일 공통
-    max_abs = np.nanmax(np.abs(df_values.values))
-    if max_abs == 0 or np.isnan(max_abs):
-        max_abs = 1.0
-    band_size = max_abs / bands
-
-    for i, asset in enumerate(assets):
-        s = df_values[asset].astype(float).copy()
-        yaxis_name = f"y{i+1}"
-
-        for b in range(bands):
-            low = band_size * b
-            high = band_size * (b + 1)
-
-            upper_pos = s.clip(lower=0)
-            lower_pos = upper_pos.clip(upper=low)
-            upper_pos = upper_pos.clip(upper=high)
-            band_pos = (upper_pos - lower_pos).replace(0, np.nan)
-
-            if not band_pos.isna().all():
-                fig.add_trace(go.Scatter(
-                    x=band_pos.index,
-                    y=band_pos.values,
-                    mode='lines',
-                    line=dict(width=0),
-                    stackgroup=f'pos{i}',
-                    fill='tonexty',
-                    fillcolor=colors_pos[b],
-                    hoverinfo='skip',
-                    showlegend=False,
-                    yaxis=yaxis_name,
-                ))
-
-            lower_neg = s.clip(upper=0)
-            upper_neg = lower_neg.clip(upper=-low)
-            lower_neg = lower_neg.clip(upper=-high)
-            band_neg = (upper_neg - lower_neg).replace(0, np.nan)
-
-            if not band_neg.isna().all():
-                fig.add_trace(go.Scatter(
-                    x=band_neg.index,
-                    y=-band_neg.values,
-                    mode='lines',
-                    line=dict(width=0),
-                    stackgroup=f'neg{i}',
-                    fill='tonexty',
-                    fillcolor=colors_neg[b],
-                    hoverinfo='skip',
-                    showlegend=False,
-                    yaxis=yaxis_name,
-                ))
-
-        fig.add_trace(go.Scatter(
-            x=s.index,
-            y=s.values,
-            mode='lines',
-            line=dict(color='rgba(0,0,0,0)', width=1),
-            hovertemplate=f'{asset}<br>%{{x|%Y-%m-%d}}<br>Value: %{{y:.2f}}{value_suffix}<extra></extra>',
-            showlegend=False,
-            yaxis=yaxis_name,
-        ))
-
-        # Yaxis domain 설정
-        top = 1 - i * (1 / n)
-        bottom = 1 - (i + 1) * (1 / n)
-        fig.update_layout(**{
-            yaxis_name: dict(
-                domain=[bottom, top],
-                showgrid=False,
-                showline=False,
-                zeroline=True,
-                visible=False,
-            )
-        })
+    fig = make_subplots(
+        rows=n, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.02,
+        subplot_titles=assets,
+    )
+    for i, asset in enumerate(assets, start=1):
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df[asset],
+                mode="lines",
+                line=dict(width=1.5),
+                name=asset,
+                showlegend=False,
+            ),
+            row=i, col=1,
+        )
+        fig.update_yaxes(title_text=y_label if i == 1 else "", row=i, col=1)
 
     fig.update_layout(
-        template="plotly_white",
         title=title,
-        height=max(200, n * height_per_series),
-        margin=dict(t=40, b=40, l=20, r=20),
-        xaxis=dict(showgrid=False, showline=False, zeroline=False),
+        template="plotly_white",
+        height=max(250, 120 * n),
+        margin=dict(t=60, b=40, l=60, r=20),
     )
     return fig
 
 
 # ======================================================
-# Chart Functions for Page 1 (수정: horizon multi)
+# Chart-related calculations
 # ======================================================
 def compute_monthly_returns_df(prices_data: pd.DataFrame) -> pd.DataFrame:
     monthly = prices_data.resample('M').last()
@@ -1004,7 +933,7 @@ def show_page1():
 
 
 # ======================================================
-# Comprehensive Chart Renderer (Page 1)  - 수정
+# Comprehensive Chart Renderer (Page 1)
 # ======================================================
 def render_comprehensive_chart(label2t, chart_key):
     if f"{chart_key}_period" not in st.session_state:
@@ -1074,15 +1003,13 @@ def render_comprehensive_chart(label2t, chart_key):
 
         assets = list(label2t.keys())
 
-        # === Horizon Monthly Returns (multi) ===
-        st.subheader("📊 Monthly Returns — Horizon View")
+        # === Monthly Returns (multi panel) ===
+        st.subheader("📊 Monthly Returns (공통 x축)")
         monthly_rets = compute_monthly_returns_df(prices_data[assets])
-        fig_month = _make_horizon_multi(
+        fig_month = make_multi_panel_line(
             monthly_rets,
-            title="Monthly Returns (%, vs 0)",
-            bands=4,
-            height_per_series=26,
-            value_suffix="%"
+            title="Monthly Returns (%)",
+            y_label="Return(%)"
         )
         st.plotly_chart(fig_month, use_container_width=True)
 
@@ -1114,39 +1041,33 @@ def render_comprehensive_chart(label2t, chart_key):
         
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        # === Horizon Rolling Volatility ===
-        st.subheader("📈 Rolling Volatility (6-Month) — Horizon View")
+        # === Rolling Volatility ===
+        st.subheader("📈 Rolling Volatility (6-Month, 공통 x축)")
         rolling_vol_df = compute_rolling_vol_df(prices_data[assets], window=126)
-        fig_vol = _make_horizon_multi(
+        fig_vol = make_multi_panel_line(
             rolling_vol_df,
             title="Rolling 6M Volatility (annualized, %)",
-            bands=4,
-            height_per_series=24,
-            value_suffix="%"
+            y_label="Vol(%)"
         )
         st.plotly_chart(fig_vol, use_container_width=True)
 
-        # === Horizon Rolling Sharpe ===
-        st.subheader("⭐ Rolling Sharpe Ratio (6-Month) — Horizon View")
+        # === Rolling Sharpe ===
+        st.subheader("⭐ Rolling Sharpe Ratio (6-Month, 공통 x축)")
         rolling_sharpe_df = compute_rolling_sharpe_df(prices_data[assets], window=126, risk_free=0.02)
-        fig_sharpe = _make_horizon_multi(
+        fig_sharpe = make_multi_panel_line(
             rolling_sharpe_df,
             title="Rolling 6M Sharpe Ratio",
-            bands=4,
-            height_per_series=24,
-            value_suffix=""
+            y_label="Sharpe"
         )
         st.plotly_chart(fig_sharpe, use_container_width=True)
 
-        # === Horizon Maximum Drawdown ===
-        st.subheader("📉 Maximum Drawdown — Horizon View")
+        # === Maximum Drawdown ===
+        st.subheader("📉 Maximum Drawdown (공통 x축)")
         dd_df = compute_drawdown_df(prices_data[assets])
-        fig_dd = _make_horizon_multi(
+        fig_dd = make_multi_panel_line(
             dd_df,
             title="Drawdown from Peak (%)",
-            bands=4,
-            height_per_series=24,
-            value_suffix="%"
+            y_label="Drawdown(%)"
         )
         st.plotly_chart(fig_dd, use_container_width=True)
 
@@ -1178,14 +1099,13 @@ def show_page2():
         all_news = NewsCollector(days=3).collect_all(holdings, etf_ticker)
         if not all_news:
             st.warning(f"⚠️ {selected}: 관련 뉴스를 찾지 못했습니다.")
-            progress.empty()
-            return
-        progress.progress(60, text=f"✅ {len(all_news)}건 뉴스 — FinBERT 감성 분석 중...")
+        else:
+            progress.progress(60, text=f"✅ {len(all_news)}건 뉴스 — FinBERT 감성 분석 중...")
 
-        analyzed = load_analyzer().batch_analyze(all_news)
-        st.session_state[cache_key] = analyzed
-        progress.progress(100, text="✅ 분석 완료!")
-        time.sleep(0.5)
+            analyzed = load_analyzer().batch_analyze(all_news)
+            st.session_state[cache_key] = analyzed
+            progress.progress(100, text="✅ 분석 완료!")
+            time.sleep(0.5)
         progress.empty()
 
     if cache_key not in st.session_state:
