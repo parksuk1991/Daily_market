@@ -697,28 +697,34 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     # 현재값 포맷
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
+    
+    # 모든 성과 컬럼을 format_number로 포맷 (Distribution과 동일 방식)
+    perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
+    for col in perf_cols:
+        if col in df_r.columns:
+            df_r[col] = df_r[col].apply(lambda x: format_number(x, 2) if pd.notnull(x) else "N/A")
 
     return df_r
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """소수점 정확히 2자리 + 파스텔 히트맵 (Distribution 방식)"""
+    """이미 포맷된 데이터에 파스텔 히트맵만 적용"""
     styled = df.copy().style
 
     for col in perf_cols:
         if col in df.columns:
-            # format_number 함수와 동일한 방식으로 포맷
-            styled = styled.format({col: lambda x: f"{float(x):.2f}%" if pd.notnull(x) else 'N/A'})
-            
-            # 숫자 값으로 히트맵 계산
-            numeric_vals = pd.to_numeric(df[col], errors='coerce')
+            # 문자열에서 % 제거 후 숫자로 변환 (히트맵용)
+            numeric_vals = pd.to_numeric(
+                df[col].astype(str).str.replace('%', '').str.strip(),
+                errors='coerce'
+            )
             valid_vals = numeric_vals[numeric_vals.notna()]
             
             if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
-                # 파스텔 히트맵
+                # 파스텔 히트맵 (숫자는 이미 format_number로 포맷되어 있음)
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='RdYlGn',
