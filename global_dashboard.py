@@ -1079,7 +1079,7 @@ with st.sidebar:
     
     st.caption(f"Last visit: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.divider() # 구분선 추가
-    st.caption(f"© 2026 KB Asset Management. \n\nAll Rights Reserved.")
+    st.caption(f"© 2026 KB Asset Management.")
     with st.expander("📄 MIT License Details"):
         st.markdown("""
         **MIT License**
