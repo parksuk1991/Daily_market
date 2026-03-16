@@ -818,10 +818,10 @@ def show_page1():
 
     # 차트 탭
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["📊 주가지수 차트", "📗 섹터 차트", "📙 스타일 차트", "📋 기준일 정보"]
+        ["📊 주가지수", "📗 섹터", "📙 스타일", "📋 기준일 정보"]
     )
     with tab1:
-        st.subheader("✅ 주요 주가지수 수익률")
+        st.subheader("✅ Performance")
         _render_chart(STOCK_ETFS, "idx_months", "idx_sel")
     with tab2:
         st.subheader("☑️ 섹터 ETF 수익률")
@@ -894,10 +894,10 @@ def show_page2():
     neu   = (df['Sentiment_Category'] == 'Neutral').sum()
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("총 뉴스",  len(df))
-    c2.metric("🟢 긍정",  int(pos))
-    c3.metric("🔴 부정",  int(neg))
-    c4.metric("평균 감정", f"{avg_s:+.3f}")
+    c1.metric("Total",  len(df))
+    c2.metric("🟢 Positive",  int(pos))
+    c3.metric("🔴 Negative",  int(neg))
+    c4.metric("Average", f"{avg_s:+.3f}")
 
     st.markdown("---")
 
