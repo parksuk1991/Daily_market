@@ -406,7 +406,7 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
              .sort_values('Avg', ascending=True))
 
     company_map = df.drop_duplicates('Ticker').set_index('Ticker')['Company'].to_dict()
-    colors = ['#2ecc71' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
+    colors = ['#FFBC00' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
               for v in agg['Avg']]
 
     fig = go.Figure()
@@ -466,7 +466,7 @@ def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
     ).reset_index()
     counts.columns = ['Category', 'Count']
     color_map = {
-        'Positive': 'rgba(46,204,113,0.8)',
+        'Positive': 'rgba(255,188,0,0.8)',
         'Neutral': 'rgba(102,194,165,0.8)',
         'Negative': 'rgba(230,126,34,0.8)',
     }
@@ -1286,7 +1286,7 @@ def show_page3():
         fig_up.add_trace(go.Bar(
             x=df_plot['Ticker'],
             y=df_plot['상승여력(%)'],
-            marker_color=['#2ecc71' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
+            marker_color=['#FFBC00' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
             text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
             textposition='outside',
         ))
