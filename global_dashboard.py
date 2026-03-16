@@ -908,8 +908,8 @@ def show_page1():
 
     for title, label2t, h in [
         ("📊 Equity", STOCK_ETFS, 520),
-        ("🗠 Bond", BOND_ETFS, 410),
-        ("💱 Currency", CURRENCY, 300),
+        ("🗠 Bond", BOND_ETFS, 390),
+        ("💱 Currency", CURRENCY, 290),
         ("📈 Crypto", CRYPTO, 410),
         ("📕 Style ETF", STYLE_ETFS, 270),
         ("📘 Sector ETF", SECTOR_ETFS, 450),
