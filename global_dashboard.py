@@ -921,7 +921,7 @@ def show_page1():
 
     st.markdown("---")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 주가지수", "📗 섹터", "📙 스타일", "📋 계산 기준일"])
+    tab1, tab2, tab3 = st.tabs(["📊 주가지수", "📗 섹터", "📙 스타일"])
 
     with tab1:
         st.subheader("✅ Stock Indices - Comprehensive Analysis")
@@ -935,15 +935,6 @@ def show_page1():
         st.subheader("☑️ Style ETF - Comprehensive Analysis")
         render_comprehensive_chart(STYLE_ETFS, "style")
         
-    with tab4:
-        st.subheader("📋 계산 기준일")
-        lbl, last_d, adates = get_sample_calculation_dates(STOCK_ETFS)
-        if lbl and adates:
-            st.caption(f"**샘플 자산:** {lbl} | **최근 거래일:** {last_d}")
-            l1 = [f"{p}: {adates[p]}" for p in ['1D','1W','MTD','1M'] if p in adates]
-            st.caption("• " + " | ".join(l1))
-            l2 = [f"{p}: {adates[p]}" for p in ['3M','6M','YTD','1Y','3Y'] if p in adates]
-            st.caption("• " + " | ".join(l2))
 
 
 def render_comprehensive_chart(label2t, chart_key):
