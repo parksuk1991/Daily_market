@@ -1061,15 +1061,12 @@ def show_page3():
 # ======================================================
 
 with st.sidebar:
-    # KB자산운용 로고로 변경
-    # 공식 KB자산운용 로고 URL을 사용하거나, 아래의 댓글 처리된 부분을 수정하세요
     try:
-        kb_logo_url = "https://img.inhr.co.kr/static/careerlink/DSGN/250310110803368lsi.svg"  # KB자산운용 공식 로고 URL
-        resp = requests.get(kb_logo_url, timeout=4, verify=False)
+        logo_url = "https://img.inhr.co.kr/static/careerlink/DSGN/250310110803368lsi.svg"
+        resp = requests.get(logo_url, timeout=4, verify=False)
         if resp.status_code == 200:
             st.image(Image.open(BytesIO(resp.content)), use_container_width=True)
     except Exception:
-        # 로고 로드 실패 시 텍스트만 표시
         pass
 
     st.title("💡 Global Market")
