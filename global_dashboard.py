@@ -527,8 +527,13 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     start = ref_date - timedelta(days=4 * 365)
     end = ref_date + timedelta(days=1)
     try:
-        df = yf.download(tickers, start=start, end=end, progress=False)['Close']
-        if isinstance(df, pd.Series): df = df.to_frame()
+        raw = yf.download(tickers, start=start, end=end, progress=False)
+        if isinstance(raw, pd.DataFrame):
+            df = raw['Close']
+        else:
+            df = raw
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
         df = df.ffill().dropna(how='all')[tickers]
     except: return pd.DataFrame()
     if df.empty: return pd.DataFrame()
@@ -584,9 +589,13 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 def get_sample_calculation_dates(label2ticker, ref_date=None):
     if ref_date is None: ref_date = datetime.now().date()
     try:
-        data = yf.download(list(label2ticker.values())[0],
+        raw = yf.download(list(label2ticker.values())[0],
                             start=ref_date - timedelta(days=4*365),
-                            end=ref_date + timedelta(days=1), progress=False)['Close'].dropna()
+                            end=ref_date + timedelta(days=1), progress=False)
+        if isinstance(raw, pd.DataFrame):
+            data = raw['Close'].dropna()
+        else:
+            data = raw.dropna()
         avail = data.index[data.index.date <= ref_date]
         if len(avail) == 0: return None, None, None
         last_trade = avail[-1].date()
@@ -606,9 +615,13 @@ def get_normalized_prices(label2ticker, months=6):
     tickers = list(label2ticker.values())
     end = datetime.now().date()
     start = end - timedelta(days=months * 31)
-    df = yf.download(tickers, start=start, end=end+timedelta(days=1), progress=False)['Close']
-    if isinstance(df, pd.Series): df = df.to_frame()
-    df = df.ffill()[tickers]
+    try:
+        df = yf.download(tickers, start=start, end=end+timedelta(days=1), progress=False)['Close']
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        df = df.ffill()[tickers]
+    except:
+        return pd.DataFrame()
     norm = df / df.iloc[0] * 100
     norm.columns = list(label2ticker.keys())
     return norm
@@ -745,10 +758,30 @@ def _render_chart(label2t, session_key, select_key, benchmark_ticker='ACWI'):
         first_ticker = list(label2t.values())[0]
         first_name = list(label2t.keys())[0]
 
-        prices_data = yf.download(first_ticker, start=start_date, end=end_date, progress=False)['Close'].to_frame()
-        prices_data.columns = [first_name]
-        bm_data = yf.download(benchmark_ticker, start=start_date, end=end_date, progress=False)['Close'].to_frame()
+        # 가격 데이터 다운로드 및 타입 처리
+        try:
+            prices_raw = yf.download(first_ticker, start=start_date, end=end_date, progress=False)
+            if isinstance(prices_raw, pd.DataFrame):
+                prices_data = prices_raw[['Close']].copy()
+            else:
+                prices_data = prices_raw.to_frame()
+            prices_data.columns = [first_name]
+        except Exception as e:
+            st.error(f"가격 데이터 다운로드 실패: {str(e)}")
+            return
 
+        # 벤치마크 데이터 다운로드
+        try:
+            bm_raw = yf.download(benchmark_ticker, start=start_date, end=end_date, progress=False)
+            if isinstance(bm_raw, pd.DataFrame):
+                bm_data = bm_raw[['Close']].copy()
+            else:
+                bm_data = bm_raw.to_frame()
+        except Exception as e:
+            st.error(f"벤치마크 데이터 다운로드 실패: {str(e)}")
+            return
+
+        # 1️⃣ 누적 수익률
         st.subheader("📈 Cumulative Returns")
         norm = prices_data / prices_data.iloc[0] * 100
         fig = go.Figure()
@@ -758,29 +791,53 @@ def _render_chart(label2t, session_key, select_key, benchmark_ticker='ACWI'):
             legend=dict(orientation='h'), hovermode='x unified',)
         st.plotly_chart(fig, use_container_width=True)
 
+        # 2️⃣ 월간 수익률
         st.subheader("📊 Monthly Returns")
-        monthly_fig = plot_monthly_returns(prices_data, first_name)
-        st.plotly_chart(monthly_fig, use_container_width=True)
+        try:
+            monthly_fig = plot_monthly_returns(prices_data, first_name)
+            st.plotly_chart(monthly_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"월간 수익률 차트 생성 실패: {str(e)}")
 
+        # 3️⃣ 월간 수익률 분포
         st.subheader("📉 Distribution of Monthly Returns")
-        dist_fig = plot_distribution_monthly(prices_data, first_name)
-        st.plotly_chart(dist_fig, use_container_width=True)
+        try:
+            dist_fig = plot_distribution_monthly(prices_data, first_name)
+            st.plotly_chart(dist_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"분포 차트 생성 실패: {str(e)}")
 
+        # 4️⃣ 로그 스케일
         st.subheader("📊 Cumulative Returns (Log Scale)")
-        log_fig = plot_log_cumulative(prices_data, first_name, bm_data)
-        st.plotly_chart(log_fig, use_container_width=True)
+        try:
+            log_fig = plot_log_cumulative(prices_data, first_name, bm_data)
+            st.plotly_chart(log_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"로그 차트 생성 실패: {str(e)}")
 
+        # 5️⃣ 롤링 베타
         st.subheader(f"🎯 Rolling Beta to Benchmark ({benchmark_ticker})")
-        beta_fig = plot_rolling_beta(prices_data, bm_data, first_name)
-        st.plotly_chart(beta_fig, use_container_width=True)
+        try:
+            beta_fig = plot_rolling_beta(prices_data, bm_data, first_name)
+            st.plotly_chart(beta_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"베타 차트 생성 실패: {str(e)}")
 
+        # 6️⃣ 롤링 변동성
         st.subheader("📈 Rolling Volatility (6-Month)")
-        vol_fig = plot_rolling_volatility(prices_data, first_name)
-        st.plotly_chart(vol_fig, use_container_width=True)
+        try:
+            vol_fig = plot_rolling_volatility(prices_data, first_name)
+            st.plotly_chart(vol_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"변동성 차트 생성 실패: {str(e)}")
 
+        # 7️⃣ 롤링 샤프
         st.subheader("⭐ Rolling Sharpe Ratio (6-Month)")
-        sharpe_fig = plot_rolling_sharpe(prices_data, first_name)
-        st.plotly_chart(sharpe_fig, use_container_width=True)
+        try:
+            sharpe_fig = plot_rolling_sharpe(prices_data, first_name)
+            st.plotly_chart(sharpe_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"샤프 차트 생성 실패: {str(e)}")
 
 
 # ─────────────────────────────────────────────────────
