@@ -1063,7 +1063,14 @@ def show_page3():
 
 with st.sidebar:
     logo_url = "https://img.inhr.co.kr/static/careerlink/DSGN/250310110803368lsi.svg"
-    st.logo(logo_url)
+    st.markdown(
+        f"""
+        <div style="display: flex; justify-content: center; align-items: center; padding-top: 20px; padding-bottom: 20px;">
+            <img src="{logo_url}" width="200px" style="display: block;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.title("💡 Global Market")
     st.markdown("---")
