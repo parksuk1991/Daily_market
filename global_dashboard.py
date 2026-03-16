@@ -1092,6 +1092,10 @@ with st.sidebar:
     )
     st.markdown("---")
     st.caption("Data source: Yahoo Finance")
+    st.markdown('<div style="font-size:0.85rem;">Data: '
+                    '<a href="https://finance.yahoo.com/" target="_blank">Yahoo Finance</a></div>',
+                    unsafe_allow_html=True)
+    
     st.caption(f"Last visit: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
 if page == "📊 시장 성과":
