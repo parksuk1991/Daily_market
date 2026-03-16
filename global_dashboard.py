@@ -28,14 +28,27 @@ st.set_page_config(
     layout="wide"
 )
 
-# =========== KB 자산운용 컬러 시스템 ================
-KB_COLORS = {
-    'yellow_positive': '#FFBC00',     # RGB(255, 188, 0) - 긍정/상승
-    'yellow_neutral': '#FFCC00',      # RGB(255, 204, 0) - 중립
-    'dark_gray': '#545045',           # RGB(84, 80, 69) - 부정/하락
-    'gray': '#60584C',                # RGB(96, 88, 76) - 배경/보조선
-    'dark_bg': '#111111',             # RGB(17, 17, 17) - 다크모드 배경
-    'light_text': '#E8E8E8',          # RGB(232, 232, 232) - 밝은 텍스트
+# =========== 통일된 색상 팔레트 (Plotly Set2 + 확장) ================
+# 모든 시각화에 일관된 색상 사용
+COLORS = {
+    'palette': [
+        '#1f77b4',  # 진한 파란색
+        '#ff7f0e',  # 주황색
+        '#2ca02c',  # 초록색
+        '#d62728',  # 빨간색
+        '#9467bd',  # 보라색
+        '#8c564b',  # 갈색
+        '#e377c2',  # 핑크색
+        '#7f7f7f',  # 회색
+        '#bcbd22',  # 노란색
+        '#17becf',  # 청록색
+        '#aec7e8',  # 연한 파란색
+        '#ffbb78',  # 연한 주황색
+    ],
+    'positive': '#2ca02c',    # 긍정/상승: 초록색
+    'negative': '#d62728',    # 부정/하락: 빨간색
+    'neutral': '#7f7f7f',     # 중립: 회색
+    'heatmap': 'RdYlGn',      # Heatmap: 빨강-노랑-초록
 }
 
 # =========== 자산 정의 ================
@@ -422,7 +435,7 @@ def build_sentiment_df(news_list: list) -> pd.DataFrame:
 
 
 def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
-    """종목별 평균 감정 가로 막대 차트 — KB 컬러 적용"""
+    """종목별 평균 감정 가로 막대 차트"""
     if df.empty:
         return
     agg = (df.groupby('Ticker')['Sentiment']
@@ -432,8 +445,8 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
              .sort_values('Avg', ascending=True))
 
     company_map = df.drop_duplicates('Ticker').set_index('Ticker')['Company'].to_dict()
-    # KB 컬러: 긍정(노랑), 중립(밝은 노랑), 부정(다크그레이)
-    colors = [KB_COLORS['yellow_positive'] if v > 0.05 else (KB_COLORS['dark_gray'] if v < -0.05 else KB_COLORS['yellow_neutral'])
+    # 통일된 색상: 양수=초록색, 음수=빨간색, 0=회색
+    colors = [COLORS['positive'] if v > 0.05 else (COLORS['negative'] if v < -0.05 else COLORS['neutral'])
               for v in agg['Avg']]
 
     fig = go.Figure()
@@ -447,15 +460,13 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
         customdata=[company_map.get(t, '') for t in agg['Ticker']],
         hovertemplate='<b>%{y}</b> (%{customdata})<br>Sentiment: %{x:.4f}<extra></extra>',
     ))
-    fig.add_vline(x=0, line_width=1, line_dash='dash', line_color=KB_COLORS['gray'], opacity=0.6)
+    fig.add_vline(x=0, line_width=1, line_dash='dash', line_color='lightgray', opacity=0.5)
     fig.update_layout(
-        title=dict(text=f"📊 {sector_name} — 종목별 평균 감정 점수", font=dict(size=14, color=KB_COLORS['light_text'])),
+        title=dict(text=f"📊 {sector_name} — 종목별 평균 감정 점수", font=dict(size=14)),
         xaxis=dict(title="Sentiment Score", range=[-1, 1],
-                   tickvals=[-1, -0.5, 0, 0.5, 1], showgrid=True, gridcolor=KB_COLORS['gray']),
+                   tickvals=[-1, -0.5, 0, 0.5, 1]),
         yaxis=dict(title=""),
-        paper_bgcolor=KB_COLORS['dark_bg'],
-        plot_bgcolor='#1a1a1a',
-        font=dict(color=KB_COLORS['light_text']),
+        template="plotly_white",
         height=max(260, len(agg) * 44),
         margin=dict(l=70, r=130, t=50, b=40),
         showlegend=False,
@@ -464,14 +475,14 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
 
 
 def create_sentiment_histogram(df: pd.DataFrame) -> go.Figure:
-    """감정 히스토그램 — KB 컬러 적용"""
+    """감정 히스토그램"""
     if df.empty:
         return go.Figure()
     fig = go.Figure()
     fig.add_trace(go.Histogram(
         x=df['Sentiment'], nbinsx=20,
         name='Sentiment Distribution',
-        marker_color=KB_COLORS['yellow_positive'], opacity=0.8,
+        marker_color=COLORS['positive'], opacity=0.7,
     ))
     hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -480,21 +491,19 @@ def create_sentiment_histogram(df: pd.DataFrame) -> go.Figure:
         x=bin_centers,
         y=smoothed * len(df) * (bin_edges[1] - bin_edges[0]),
         mode='lines', name='KDE',
-        line=dict(color=KB_COLORS['yellow_neutral'], width=2),
+        line=dict(color=COLORS['negative'], width=2),
     ))
     fig.update_layout(
-        title=dict(text='감정 점수 분포', font=dict(color=KB_COLORS['light_text'])),
+        title='감정 점수 분포',
         xaxis_title='감정 점수', yaxis_title='빈도',
-        paper_bgcolor=KB_COLORS['dark_bg'],
-        plot_bgcolor='#1a1a1a',
-        font=dict(color=KB_COLORS['light_text']),
+        template="plotly_white",
         height=380, showlegend=True,
     )
     return fig
 
 
 def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
-    """감정 분포 차트 — KB 컬러 적용"""
+    """감정 분포 차트"""
     if df.empty:
         return go.Figure()
     counts = df['Sentiment_Category'].value_counts().reindex(
@@ -502,35 +511,33 @@ def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
     ).reset_index()
     counts.columns = ['Category', 'Count']
     color_map = {
-        'Positive': KB_COLORS['yellow_positive'],
-        'Neutral':  KB_COLORS['yellow_neutral'],
-        'Negative': KB_COLORS['dark_gray'],
+        'Positive': COLORS['positive'],
+        'Neutral':  COLORS['neutral'],
+        'Negative': COLORS['negative'],
     }
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=counts['Category'],
         y=counts['Count'],
-        marker_color=[color_map.get(c, KB_COLORS['gray']) for c in counts['Category']],
+        marker_color=[color_map.get(c, COLORS['neutral']) for c in counts['Category']],
         text=counts['Count'], textposition='inside',
         textfont=dict(color='white', size=14),
     ))
     fig.update_layout(
-        title=dict(text='감정 분포', font=dict(color=KB_COLORS['light_text'])),
+        title='감정 분포',
         xaxis_title='감정 카테고리', yaxis_title='뉴스 개수',
-        paper_bgcolor=KB_COLORS['dark_bg'],
-        plot_bgcolor='#1a1a1a',
-        font=dict(color=KB_COLORS['light_text']),
+        template="plotly_white",
         height=380, showlegend=False,
     )
     return fig
 
 
 def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
-    """박스플롯 — KB 컬러 적용"""
+    """박스플롯"""
     if df.empty:
         return go.Figure()
     tickers = df['Ticker'].unique()
-    colors  = [KB_COLORS['yellow_positive'], KB_COLORS['yellow_neutral'], KB_COLORS['dark_gray']]
+    colors_list = COLORS['palette']
     mean_df = df.groupby('Ticker')['Sentiment'].mean().reset_index()
 
     fig = go.Figure()
@@ -538,10 +545,10 @@ def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
         ticker_data = df[df['Ticker'] == ticker]['Sentiment']
         fig.add_trace(go.Box(
             y=ticker_data, name=ticker,
-            marker_color=colors[i % len(colors)], boxmean=True,
+            marker_color=colors_list[i % len(colors_list)], boxmean=True,
         ))
     for i, row in enumerate(mean_df.itertuples()):
-        color = KB_COLORS['yellow_positive'] if row.Sentiment >= 0 else KB_COLORS['dark_gray']
+        color = COLORS['positive'] if row.Sentiment >= 0 else COLORS['negative']
         fig.add_annotation(
             x=i, y=row.Sentiment,
             text=f'{row.Sentiment:.2f}',
@@ -550,18 +557,16 @@ def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
             bgcolor="rgba(255,255,255,0.8)",
         )
     fig.update_layout(
-        title=dict(text='종목별 감정 점수 분포 (Box Plot)', font=dict(color=KB_COLORS['light_text'])),
+        title='종목별 감정 점수 분포 (Box Plot)',
         xaxis_title='종목', yaxis_title='감정 점수',
-        paper_bgcolor=KB_COLORS['dark_bg'],
-        plot_bgcolor='#1a1a1a',
-        font=dict(color=KB_COLORS['light_text']),
+        template="plotly_white",
         height=480, showlegend=False,
     )
     return fig
 
 
 def render_news_table(df: pd.DataFrame):
-    """전체 뉴스 테이블 — KB 컬러 적용"""
+    """전체 뉴스 테이블"""
     if df.empty:
         st.info("관련 뉴스가 없습니다.")
         return
@@ -572,9 +577,9 @@ def render_news_table(df: pd.DataFrame):
     def color_sent(val):
         try:
             v = float(val)
-            if v > 0.05:  return f'color: {KB_COLORS["yellow_positive"]}; font-weight:bold'
-            if v < -0.05: return f'color: {KB_COLORS["dark_gray"]}; font-weight:bold'
-            return f'color: {KB_COLORS["gray"]}'
+            if v > 0.05:  return f'color: {COLORS["positive"]}; font-weight:bold'
+            if v < -0.05: return f'color: {COLORS["negative"]}; font-weight:bold'
+            return f'color: {COLORS["neutral"]}'
         except Exception:
             return ''
 
@@ -774,7 +779,7 @@ def style_perf_table(df, perf_cols):
 period_options = {"3개월": 3, "6개월": 6, "12개월": 12, "24개월": 24, "36개월": 36}
 
 def _render_chart(label2t, session_key, select_key):
-    """차트 렌더링 — KB 컬러 적용"""
+    """차트 렌더링 — 다양한 색상 팔레트"""
     if session_key not in st.session_state:
         st.session_state[session_key] = 6
     months = st.selectbox(
@@ -787,7 +792,7 @@ def _render_chart(label2t, session_key, select_key):
     with st.spinner("차트 로딩 중..."):
         norm = get_normalized_prices(label2t, months=mv)
         fig  = go.Figure()
-        colors_list = [KB_COLORS['yellow_positive'], KB_COLORS['yellow_neutral'], KB_COLORS['dark_gray']]
+        colors_list = COLORS['palette']
         for i, col in enumerate(norm.columns):
             fig.add_trace(go.Scatter(
                 x=norm.index, y=norm[col], mode='lines', name=col,
@@ -795,13 +800,9 @@ def _render_chart(label2t, session_key, select_key):
             ))
         fig.update_layout(
             yaxis_title="100 기준 누적수익률(%)",
-            paper_bgcolor=KB_COLORS['dark_bg'],
-            plot_bgcolor='#1a1a1a',
-            font=dict(color=KB_COLORS['light_text']),
+            template="plotly_white",
             height=500,
             legend=dict(orientation='h'),
-            xaxis=dict(showgrid=True, gridcolor=KB_COLORS['gray']),
-            yaxis=dict(showgrid=True, gridcolor=KB_COLORS['gray']),
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -1010,17 +1011,17 @@ def show_page3():
     def color_upside(val):
         try:
             v = float(val)
-            if v > 10:  return f'color: {KB_COLORS["yellow_positive"]}; font-weight:bold'
-            if v < 0:   return f'color: {KB_COLORS["dark_gray"]}; font-weight:bold'
+            if v > 10:  return f'color: {COLORS["positive"]}; font-weight:bold'
+            if v < 0:   return f'color: {COLORS["negative"]}; font-weight:bold'
             return ''
         except: return ''
 
     def color_rating(val):
         try:
             v = float(val)
-            if v <= 2:   return f'color: {KB_COLORS["yellow_positive"]}; font-weight:bold'
-            if v >= 4:   return f'color: {KB_COLORS["dark_gray"]}; font-weight:bold'
-            return f'color: {KB_COLORS["yellow_neutral"]}'
+            if v <= 2:   return f'color: {COLORS["positive"]}; font-weight:bold'
+            if v >= 4:   return f'color: {COLORS["negative"]}; font-weight:bold'
+            return f'color: {COLORS["neutral"]}'
         except: return ''
 
     fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.1f}%'}
@@ -1032,24 +1033,22 @@ def show_page3():
     st.dataframe(styled_a, use_container_width=True,
                  height=min(500, 40 + len(analyst_sorted) * 35))
 
-    # ── 상승여력 막대 차트 ─── KB 컬러 적용 ──────────────
+    # ── 상승여력 막대 차트 ───────────────────────────────
     if not analyst_sorted['상승여력(%)'].isna().all():
         fig_up = go.Figure()
         df_plot = analyst_sorted.dropna(subset=['상승여력(%)'])
         fig_up.add_trace(go.Bar(
             x=df_plot['Ticker'],
             y=df_plot['상승여력(%)'],
-            marker_color=[KB_COLORS['yellow_positive'] if v > 0 else KB_COLORS['dark_gray'] for v in df_plot['상승여력(%)']],
+            marker_color=[COLORS['positive'] if v > 0 else COLORS['negative'] for v in df_plot['상승여력(%)']],
             text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
             textposition='outside',
         ))
-        fig_up.add_hline(y=0, line_dash='dash', line_color=KB_COLORS['gray'], opacity=0.6)
+        fig_up.add_hline(y=0, line_dash='dash', line_color='lightgray', opacity=0.5)
         fig_up.update_layout(
-            title=dict(text='종목별 애널리스트 목표주가 상승여력', font=dict(color=KB_COLORS['light_text'])),
+            title='종목별 애널리스트 목표주가 상승여력',
             xaxis_title='Ticker', yaxis_title='상승여력 (%)',
-            paper_bgcolor=KB_COLORS['dark_bg'],
-            plot_bgcolor='#1a1a1a',
-            font=dict(color=KB_COLORS['light_text']),
+            template='plotly_white',
             height=380,
         )
         st.plotly_chart(fig_up, use_container_width=True)
@@ -1065,8 +1064,8 @@ def show_page3():
     def color_eps(val):
         try:
             v = float(val)
-            if v > 5:  return f'color: {KB_COLORS["yellow_positive"]}; font-weight:bold'
-            if v < 0:  return f'color: {KB_COLORS["dark_gray"]}; font-weight:bold'
+            if v > 5:  return f'color: {COLORS["positive"]}; font-weight:bold'
+            if v < 0:  return f'color: {COLORS["negative"]}; font-weight:bold'
             return ''
         except: return ''
 
@@ -1077,25 +1076,23 @@ def show_page3():
     st.dataframe(styled_v, use_container_width=True,
                  height=min(500, 40 + len(val_sorted) * 35))
 
-    # ── PE 비교 차트 ─── KB 컬러 적용 ────────────────────
+    # ── PE 비교 차트 ─────────────────────────────────────
     pe_df = val_sorted.dropna(subset=['Trailing PE', 'Forward PE'])
     if not pe_df.empty:
         fig_pe = go.Figure()
         fig_pe.add_trace(go.Bar(
             x=pe_df['Ticker'], y=pe_df['Trailing PE'],
-            name='Trailing PE', marker_color=KB_COLORS['yellow_positive'],
+            name='Trailing PE', marker_color=COLORS['palette'][0],
         ))
         fig_pe.add_trace(go.Bar(
             x=pe_df['Ticker'], y=pe_df['Forward PE'],
-            name='Forward PE', marker_color=KB_COLORS['yellow_neutral'],
+            name='Forward PE', marker_color=COLORS['palette'][1],
         ))
         fig_pe.update_layout(
-            title=dict(text='Trailing PE vs Forward PE', font=dict(color=KB_COLORS['light_text'])),
+            title='Trailing PE vs Forward PE',
             xaxis_title='Ticker', yaxis_title='PE Ratio',
             barmode='group',
-            paper_bgcolor=KB_COLORS['dark_bg'],
-            plot_bgcolor='#1a1a1a',
-            font=dict(color=KB_COLORS['light_text']),
+            template='plotly_white',
             height=380,
         )
         st.plotly_chart(fig_pe, use_container_width=True)
