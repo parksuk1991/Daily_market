@@ -926,18 +926,18 @@ def show_page1():
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs(["📊 주가지수", "📗 섹터", "📙 스타일"])
+    tab1, tab2, tab3 = st.tabs(["📊 국가", "📗 섹터", "📙 스타일"])
 
     with tab1:
-        st.subheader("✅ Stock Indices - Comprehensive Analysis")
+        st.subheader("✅ 국가")
         render_comprehensive_chart(STOCK_ETFS, "stock_indices")
 
     with tab2:
-        st.subheader("☑️ Sector ETF - Comprehensive Analysis")
+        st.subheader("☑️ 섹터")
         render_comprehensive_chart(SECTOR_ETFS, "sector")
 
     with tab3:
-        st.subheader("☑️ Style ETF - Comprehensive Analysis")
+        st.subheader("☑️ 스타일")
         render_comprehensive_chart(STYLE_ETFS, "style")
 
 
