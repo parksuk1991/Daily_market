@@ -911,8 +911,8 @@ def show_page1():
         ("🗠 Bond", BOND_ETFS, 385),
         ("💱 Currency", CURRENCY, 283),
         ("📈 Crypto", CRYPTO, 385),
-        ("📕 Style ETF", STYLE_ETFS, 250),
-        ("📘 Sector ETF", SECTOR_ETFS, 430),
+        ("📕 Style ETF", STYLE_ETFS, 249),
+        ("📘 Sector ETF", SECTOR_ETFS, 425),
     ]:
         st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
