@@ -39,7 +39,7 @@ BOND_ETFS = {
     '단기국채(SPTS)': 'SPTS',
 }
 CURRENCY = {
-    '달러인덱스': 'DX-Y.NYB', '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
+    '달러-원': 'KRW=X', '유로-원': 'EURKRW=X',
     '달러-엔': 'JPY=X', '원-엔': 'JPYKRW=X', '달러-유로': 'EURUSD=X',
     '달러-파운드': 'GBPUSD=X', '달러-위안': 'CNY=X',
 }
@@ -407,7 +407,7 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
              .sort_values('Avg', ascending=True))
 
     company_map = df.drop_duplicates('Ticker').set_index('Ticker')['Company'].to_dict()
-    colors = ['#2ecc71' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
+    colors = ['#FFBC00' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
               for v in agg['Avg']]
 
     fig = go.Figure()
@@ -619,10 +619,33 @@ def format_number(val, decimals=2):
 
 
 def get_perf_table_improved(label2ticker, ref_date=None):
+    tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
     start = ref_date - timedelta(days=4 * 365)
     end = ref_date + timedelta(days=1)
+
+    try:
+        raw = yf.download(tickers, start=start, end=end, progress=False)
+        if isinstance(raw, pd.DataFrame):
+            df = raw['Close']
+        else:
+            df = raw
+        if isinstance(df, pd.Series):
+            df = df.to_frame()
+        df = df.ffill().dropna(how='all')
+    except:
+        return pd.DataFrame()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    avail = df.index[df.index.date <= ref_date]
+    if len(avail) == 0:
+        return pd.DataFrame()
+
+    last_trade = avail[-1].date()
+    last_idx = avail[-1]
 
     periods = {
         '1D(%)': {'days': 1, 'type': 'business'},
@@ -638,58 +661,41 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
     results = []
     for label, ticker in label2ticker.items():
+        row = {'자산명': label}
         try:
-            df = yf.download(ticker, start=start, end=end, progress=False)['Close']
-            
-            if df is None or df.empty:
+            series = df[ticker].dropna()
+            if last_idx not in series.index or len(series) == 0:
+                row['현재값'] = np.nan
+                for pk in periods:
+                    row[pk] = np.nan
+                results.append(row)
                 continue
-            
-            df = df.ffill()
-            
-            avail = df.index[df.index.date <= ref_date]
-            if len(avail) == 0:
-                continue
-            
-            last_trade = avail[-1].date()
-            last_idx = avail[-1]
-            
-            row = {'자산명': label}
-            curr = df.loc[last_idx]
+
+            curr = series.loc[last_idx]
             row['현재값'] = curr
 
-            nan_count = 0
             for pk, cfg in periods.items():
                 base = None
                 try:
                     if cfg['type'] == 'month_start':
-                        d = df[df.index.date >= last_trade.replace(day=1)]
-                        base = d.iloc[0] if len(d) > 0 else None
+                        d = series[series.index.date >= last_trade.replace(day=1)]
+                        base = d.iloc[0] if len(d) else None
                     elif cfg['type'] == 'year_start':
-                        d = df[df.index.date >= last_trade.replace(month=1, day=1)]
-                        base = d.iloc[0] if len(d) > 0 else None
+                        d = series[series.index.date >= last_trade.replace(month=1, day=1)]
+                        base = d.iloc[0] if len(d) else None
                     else:
-                        ci = df.index.get_loc(last_idx)
+                        ci = series.index.get_loc(last_idx)
                         lb = cfg['days']
-                        base = df.iloc[ci - lb] if ci >= lb else (df.iloc[0] if ci > 0 else None)
+                        base = series.iloc[ci - lb] if ci >= lb else (series.iloc[0] if ci > 0 else None)
 
-                    if base is not None and not np.isnan(base) and base != 0:
-                        row[pk] = (curr / base - 1) * 100
-                    else:
-                        row[pk] = np.nan
-                        nan_count += 1
+                    row[pk] = (curr / base - 1) * 100 if (base is not None and not np.isnan(base) and base != 0) else np.nan
                 except:
                     row[pk] = np.nan
-                    nan_count += 1
-            
-            if nan_count <= len(periods) * 0.3:
-                results.append(row)
-        except Exception as e:
-            print(f"데이터 수집 실패: {ticker} - {str(e)}")
+
+            results.append(row)
+        except:
             continue
 
-    if not results:
-        return pd.DataFrame()
-    
     df_r = pd.DataFrame(results)
     
     if '현재값' in df_r.columns:
@@ -735,12 +741,11 @@ def style_perf_table_with_databars(df, perf_cols):
 # ======================================================
 # Horizon Chart Functions
 # ======================================================
-def create_horizon_chart(data_dict, title):
+def create_horizon_chart(data_dict):
     """Altair를 사용한 Horizon Chart 생성"""
     if not data_dict:
         return None
     
-    # 데이터 준비
     records = []
     for asset, series in data_dict.items():
         for date, val in series.items():
@@ -752,7 +757,6 @@ def create_horizon_chart(data_dict, title):
     
     df = pd.DataFrame(records)
     
-    # Horizon Chart 생성
     chart = alt.Chart(df).mark_area(
         opacity=0.8,
         interpolate='monotone'
@@ -777,7 +781,6 @@ def create_horizon_chart(data_dict, title):
 def plot_monthly_returns_horizon(prices_df):
     """Monthly Returns를 Horizon Chart로 표시"""
     data_dict = {}
-    
     for asset in prices_df.columns:
         monthly = prices_df[asset].resample('M').last()
         returns = monthly.pct_change().dropna() * 100
@@ -785,14 +788,12 @@ def plot_monthly_returns_horizon(prices_df):
     
     if not data_dict:
         return None
-    
-    return create_horizon_chart(data_dict, "📊 Monthly Returns")
+    return create_horizon_chart(data_dict)
 
 
 def plot_rolling_volatility_horizon(prices_df, window=126):
     """Rolling Volatility를 Horizon Chart로 표시"""
     data_dict = {}
-    
     for asset in prices_df.columns:
         returns = prices_df[asset].pct_change().dropna()
         rolling_vol = returns.rolling(window).std() * np.sqrt(252) * 100
@@ -800,14 +801,12 @@ def plot_rolling_volatility_horizon(prices_df, window=126):
     
     if not data_dict:
         return None
-    
-    return create_horizon_chart(data_dict, "📈 Rolling Volatility (6-Month)")
+    return create_horizon_chart(data_dict)
 
 
 def plot_rolling_sharpe_horizon(prices_df, window=126, risk_free_rate=0.02):
     """Rolling Sharpe Ratio를 Horizon Chart로 표시"""
     data_dict = {}
-    
     for asset in prices_df.columns:
         returns = prices_df[asset].pct_change().dropna()
         rolling_mean = returns.rolling(window).mean() * 252
@@ -817,8 +816,7 @@ def plot_rolling_sharpe_horizon(prices_df, window=126, risk_free_rate=0.02):
     
     if not data_dict:
         return None
-    
-    return create_horizon_chart(data_dict, "⭐ Rolling Sharpe Ratio (6-Month)")
+    return create_horizon_chart(data_dict)
 
 
 def plot_maximum_drawdown(prices_df, asset_name):
@@ -962,12 +960,12 @@ def show_page1():
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
 
     for title, label2t, h in [
-        ("📊 Equity", STOCK_ETFS, 520),
-        ("🗠 Bond", BOND_ETFS, 410),
-        ("💱 Currency", CURRENCY, 310),
-        ("📈 Crypto", CRYPTO, 410),
-        ("📕 Style ETF", STYLE_ETFS, 270),
-        ("📘 Sector ETF", SECTOR_ETFS, 450),
+        ("📊 Equity", STOCK_ETFS, 489),
+        ("🗠 Bond", BOND_ETFS, 385),
+        ("💱 Currency", CURRENCY, 283),
+        ("📈 Crypto", CRYPTO, 385),
+        ("📕 Style ETF", STYLE_ETFS, 249),
+        ("📘 Sector ETF", SECTOR_ETFS, 425),
     ]:
         st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
@@ -983,18 +981,18 @@ def show_page1():
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs(["📊 주가지수", "📗 섹터", "📙 스타일"])
+    tab1, tab2, tab3 = st.tabs(["📊 국가", "📗 섹터", "📙 스타일"])
 
     with tab1:
-        st.subheader("✅ Stock Indices - Comprehensive Analysis")
+        st.subheader("✅ 국가")
         render_comprehensive_chart(STOCK_ETFS, "stock_indices")
 
     with tab2:
-        st.subheader("☑️ Sector ETF - Comprehensive Analysis")
+        st.subheader("☑️ 섹터")
         render_comprehensive_chart(SECTOR_ETFS, "sector")
 
     with tab3:
-        st.subheader("☑️ Style ETF - Comprehensive Analysis")
+        st.subheader("☑️ 스타일")
         render_comprehensive_chart(STYLE_ETFS, "style")
 
 
@@ -1023,33 +1021,18 @@ def render_comprehensive_chart(label2t, chart_key):
         start_date = end_date - timedelta(days=months * 31)
 
         try:
-            # 각 티커를 개별적으로 다운로드
-            prices_data_dict = {}
-            failed_tickers = []
-            
-            for label, ticker in label2t.items():
-                try:
-                    data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                    if isinstance(data, pd.DataFrame):
-                        prices_data_dict[label] = data['Close']
-                    else:
-                        prices_data_dict[label] = data
-                except Exception as e:
-                    print(f"{ticker} 다운로드 실패: {str(e)}")
-                    failed_tickers.append((label, ticker))
-                    continue
-            
-            # 실패한 티커 경고
-            if failed_tickers:
-                failed_str = ", ".join([f"{label}({ticker})" for label, ticker in failed_tickers])
-                st.warning(f"⚠️ 데이터 수집 실패: {failed_str}")
-            
-            if not prices_data_dict:
-                st.error("데이터를 불러올 수 없습니다.")
-                return
-            
-            # DataFrame으로 결합
-            prices_data = pd.DataFrame(prices_data_dict)
+            tickers = list(label2t.values())
+            prices_raw = yf.download(tickers, start=start_date, end=end_date, progress=False)
+
+            if isinstance(prices_raw, pd.DataFrame):
+                prices_data = prices_raw['Close']
+            else:
+                prices_data = prices_raw.to_frame()
+
+            if isinstance(prices_data, pd.Series):
+                prices_data = prices_data.to_frame()
+
+            prices_data.columns = list(label2t.keys())
             prices_data = prices_data.ffill().dropna()
 
         except Exception as e:
@@ -1079,9 +1062,9 @@ def render_comprehensive_chart(label2t, chart_key):
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        assets = list(prices_data.columns)
+        assets = list(label2t.keys())
 
-        # ===== Horizon Charts Section (공간 효율적) =====
+        # ===== Horizon Charts (공간 효율적) =====
         st.markdown("---")
         st.subheader("⚡ Horizon Charts - 공간 효율적 분석")
         
@@ -1096,7 +1079,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 if chart:
                     st.altair_chart(chart, use_container_width=True)
                 else:
-                    st.warning("Horizon Chart를 생성할 수 없습니다.")
+                    st.warning("데이터를 불러올 수 없습니다.")
             except Exception as e:
                 st.error(f"오류: {str(e)}")
         
@@ -1107,7 +1090,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 if chart:
                     st.altair_chart(chart, use_container_width=True)
                 else:
-                    st.warning("Horizon Chart를 생성할 수 없습니다.")
+                    st.warning("데이터를 불러올 수 없습니다.")
             except Exception as e:
                 st.error(f"오류: {str(e)}")
         
@@ -1118,27 +1101,27 @@ def render_comprehensive_chart(label2t, chart_key):
                 if chart:
                     st.altair_chart(chart, use_container_width=True)
                 else:
-                    st.warning("Horizon Chart를 생성할 수 없습니다.")
+                    st.warning("데이터를 불러올 수 없습니다.")
             except Exception as e:
                 st.error(f"오류: {str(e)}")
         
-        # ===== Maximum Drawdown Section =====
+        # ===== Maximum Drawdown =====
         st.markdown("---")
         st.subheader("📉 Maximum Drawdown Analysis")
         
         drawdown_cols = st.columns(2)
-        for i, asset in enumerate(assets[:4]):  # 처음 4개만 표시
+        for i, asset in enumerate(assets[:4]):
             with drawdown_cols[i % 2]:
                 try:
                     asset_data = prices_data[[asset]]
                     fig = plot_maximum_drawdown(asset_data, asset)
                     st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
-                    st.error(f"{asset} Drawdown 계산 실패")
+                    st.error(f"{asset} 계산 실패")
         
         # ===== Distribution Statistics =====
         st.markdown("---")
-        st.subheader("📊 Distribution of Monthly Returns")
+        st.subheader("📉 Distribution of Monthly Returns")
         
         all_stats = []
         for asset in assets:
