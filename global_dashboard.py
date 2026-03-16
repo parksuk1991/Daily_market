@@ -28,29 +28,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# =========== 통일된 색상 팔레트 (Plotly Set2 + 확장) ================
-# 모든 시각화에 일관된 색상 사용
-COLORS = {
-    'palette': [
-        '#1f77b4',  # 진한 파란색
-        '#ff7f0e',  # 주황색
-        '#2ca02c',  # 초록색
-        '#d62728',  # 빨간색
-        '#9467bd',  # 보라색
-        '#8c564b',  # 갈색
-        '#e377c2',  # 핑크색
-        '#7f7f7f',  # 회색
-        '#bcbd22',  # 노란색
-        '#17becf',  # 청록색
-        '#aec7e8',  # 연한 파란색
-        '#ffbb78',  # 연한 주황색
-    ],
-    'positive': '#2ca02c',    # 긍정/상승: 초록색
-    'negative': '#d62728',    # 부정/하락: 빨간색
-    'neutral': '#7f7f7f',     # 중립: 회색
-    'heatmap': 'RdYlGn',      # Heatmap: 빨강-노랑-초록
-}
-
 # =========== 자산 정의 ================
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY', 'NASDAQ 100 (QQQ)': 'QQQ', '전세계 (ACWI)': 'ACWI',
@@ -409,7 +386,7 @@ def load_analyzer():
 
 
 # ======================================================
-# ====== 감성 분석 차트 함수 (KB 컬러 적용) ===========
+# ====== 감성 분석 차트 함수 ===========================
 # ======================================================
 def build_sentiment_df(news_list: list) -> pd.DataFrame:
     rows = []
@@ -445,8 +422,7 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
              .sort_values('Avg', ascending=True))
 
     company_map = df.drop_duplicates('Ticker').set_index('Ticker')['Company'].to_dict()
-    # 통일된 색상: 양수=초록색, 음수=빨간색, 0=회색
-    colors = [COLORS['positive'] if v > 0.05 else (COLORS['negative'] if v < -0.05 else COLORS['neutral'])
+    colors = ['#2ecc71' if v > 0.05 else ('#e74c3c' if v < -0.05 else '#95a5a6')
               for v in agg['Avg']]
 
     fig = go.Figure()
@@ -460,13 +436,13 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
         customdata=[company_map.get(t, '') for t in agg['Ticker']],
         hovertemplate='<b>%{y}</b> (%{customdata})<br>Sentiment: %{x:.4f}<extra></extra>',
     ))
-    fig.add_vline(x=0, line_width=1, line_dash='dash', line_color='lightgray', opacity=0.5)
+    fig.add_vline(x=0, line_width=1, line_dash='dash', line_color='white', opacity=0.4)
     fig.update_layout(
         title=dict(text=f"📊 {sector_name} — 종목별 평균 감정 점수", font=dict(size=14)),
         xaxis=dict(title="Sentiment Score", range=[-1, 1],
                    tickvals=[-1, -0.5, 0, 0.5, 1]),
         yaxis=dict(title=""),
-        template="plotly_white",
+        template="plotly_dark",
         height=max(260, len(agg) * 44),
         margin=dict(l=70, r=130, t=50, b=40),
         showlegend=False,
@@ -475,14 +451,13 @@ def render_sentiment_bar_chart(df: pd.DataFrame, sector_name: str):
 
 
 def create_sentiment_histogram(df: pd.DataFrame) -> go.Figure:
-    """감정 히스토그램"""
     if df.empty:
         return go.Figure()
     fig = go.Figure()
     fig.add_trace(go.Histogram(
         x=df['Sentiment'], nbinsx=20,
         name='Sentiment Distribution',
-        marker_color=COLORS['positive'], opacity=0.7,
+        marker_color='rgba(235, 0, 140, 0.7)', opacity=0.8,
     ))
     hist, bin_edges = np.histogram(df['Sentiment'], bins=20, density=True)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -491,19 +466,16 @@ def create_sentiment_histogram(df: pd.DataFrame) -> go.Figure:
         x=bin_centers,
         y=smoothed * len(df) * (bin_edges[1] - bin_edges[0]),
         mode='lines', name='KDE',
-        line=dict(color=COLORS['negative'], width=2),
+        line=dict(color='royalblue', width=2),
     ))
     fig.update_layout(
-        title='감정 점수 분포',
-        xaxis_title='감정 점수', yaxis_title='빈도',
-        template="plotly_white",
-        height=380, showlegend=True,
+        title='감정 점수 분포', xaxis_title='감정 점수', yaxis_title='빈도',
+        template="plotly_dark", height=380, showlegend=True,
     )
     return fig
 
 
 def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
-    """감정 분포 차트"""
     if df.empty:
         return go.Figure()
     counts = df['Sentiment_Category'].value_counts().reindex(
@@ -511,33 +483,30 @@ def create_sentiment_countplot(df: pd.DataFrame) -> go.Figure:
     ).reset_index()
     counts.columns = ['Category', 'Count']
     color_map = {
-        'Positive': COLORS['positive'],
-        'Neutral':  COLORS['neutral'],
-        'Negative': COLORS['negative'],
+        'Positive': 'rgba(235,0,140,0.8)',
+        'Neutral':  'rgba(102,194,165,0.8)',
+        'Negative': 'rgba(65,105,225,0.8)',
     }
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=counts['Category'],
         y=counts['Count'],
-        marker_color=[color_map.get(c, COLORS['neutral']) for c in counts['Category']],
+        marker_color=[color_map.get(c, 'grey') for c in counts['Category']],
         text=counts['Count'], textposition='inside',
         textfont=dict(color='white', size=14),
     ))
     fig.update_layout(
-        title='감정 분포',
-        xaxis_title='감정 카테고리', yaxis_title='뉴스 개수',
-        template="plotly_white",
-        height=380, showlegend=False,
+        title='감정 분포', xaxis_title='감정 카테고리', yaxis_title='뉴스 개수',
+        template="plotly_dark", height=380, showlegend=False,
     )
     return fig
 
 
 def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
-    """박스플롯"""
     if df.empty:
         return go.Figure()
     tickers = df['Ticker'].unique()
-    colors_list = COLORS['palette']
+    colors  = px.colors.qualitative.Set3
     mean_df = df.groupby('Ticker')['Sentiment'].mean().reset_index()
 
     fig = go.Figure()
@@ -545,10 +514,10 @@ def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
         ticker_data = df[df['Ticker'] == ticker]['Sentiment']
         fig.add_trace(go.Box(
             y=ticker_data, name=ticker,
-            marker_color=colors_list[i % len(colors_list)], boxmean=True,
+            marker_color=colors[i % len(colors)], boxmean=True,
         ))
     for i, row in enumerate(mean_df.itertuples()):
-        color = COLORS['positive'] if row.Sentiment >= 0 else COLORS['negative']
+        color = 'red' if row.Sentiment >= 0 else 'blue'
         fig.add_annotation(
             x=i, y=row.Sentiment,
             text=f'{row.Sentiment:.2f}',
@@ -559,14 +528,13 @@ def create_sentiment_boxplot(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         title='종목별 감정 점수 분포 (Box Plot)',
         xaxis_title='종목', yaxis_title='감정 점수',
-        template="plotly_white",
-        height=480, showlegend=False,
+        template="plotly_dark", height=480, showlegend=False,
     )
     return fig
 
 
 def render_news_table(df: pd.DataFrame):
-    """전체 뉴스 테이블"""
+    """전체 뉴스 테이블 — 긍정/부정/중립 모두 표시"""
     if df.empty:
         st.info("관련 뉴스가 없습니다.")
         return
@@ -577,9 +545,9 @@ def render_news_table(df: pd.DataFrame):
     def color_sent(val):
         try:
             v = float(val)
-            if v > 0.05:  return f'color: {COLORS["positive"]}; font-weight:bold'
-            if v < -0.05: return f'color: {COLORS["negative"]}; font-weight:bold'
-            return f'color: {COLORS["neutral"]}'
+            if v > 0.05:  return 'color: #2ecc71; font-weight:bold'
+            if v < -0.05: return 'color: #e74c3c; font-weight:bold'
+            return 'color: #95a5a6'
         except Exception:
             return ''
 
@@ -779,7 +747,6 @@ def style_perf_table(df, perf_cols):
 period_options = {"3개월": 3, "6개월": 6, "12개월": 12, "24개월": 24, "36개월": 36}
 
 def _render_chart(label2t, session_key, select_key):
-    """차트 렌더링 — 다양한 색상 팔레트"""
     if session_key not in st.session_state:
         st.session_state[session_key] = 6
     months = st.selectbox(
@@ -792,16 +759,11 @@ def _render_chart(label2t, session_key, select_key):
     with st.spinner("차트 로딩 중..."):
         norm = get_normalized_prices(label2t, months=mv)
         fig  = go.Figure()
-        colors_list = COLORS['palette']
-        for i, col in enumerate(norm.columns):
-            fig.add_trace(go.Scatter(
-                x=norm.index, y=norm[col], mode='lines', name=col,
-                line=dict(color=colors_list[i % len(colors_list)], width=2)
-            ))
+        for col in norm.columns:
+            fig.add_trace(go.Scatter(x=norm.index, y=norm[col], mode='lines', name=col))
         fig.update_layout(
             yaxis_title="100 기준 누적수익률(%)",
-            template="plotly_white",
-            height=500,
+            template="plotly_dark", height=500,
             legend=dict(orientation='h'),
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -1011,17 +973,17 @@ def show_page3():
     def color_upside(val):
         try:
             v = float(val)
-            if v > 10:  return f'color: {COLORS["positive"]}; font-weight:bold'
-            if v < 0:   return f'color: {COLORS["negative"]}; font-weight:bold'
+            if v > 10:  return 'color: #2ecc71; font-weight:bold'
+            if v < 0:   return 'color: #e74c3c; font-weight:bold'
             return ''
         except: return ''
 
     def color_rating(val):
         try:
             v = float(val)
-            if v <= 2:   return f'color: {COLORS["positive"]}; font-weight:bold'
-            if v >= 4:   return f'color: {COLORS["negative"]}; font-weight:bold'
-            return f'color: {COLORS["neutral"]}'
+            if v <= 2:   return 'color: #2ecc71; font-weight:bold'
+            if v >= 4:   return 'color: #e74c3c; font-weight:bold'
+            return 'color: #f39c12'
         except: return ''
 
     fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.1f}%'}
@@ -1040,16 +1002,15 @@ def show_page3():
         fig_up.add_trace(go.Bar(
             x=df_plot['Ticker'],
             y=df_plot['상승여력(%)'],
-            marker_color=[COLORS['positive'] if v > 0 else COLORS['negative'] for v in df_plot['상승여력(%)']],
+            marker_color=['#2ecc71' if v > 0 else '#e74c3c' for v in df_plot['상승여력(%)']],
             text=[f"{v:.1f}%" for v in df_plot['상승여력(%)']],
             textposition='outside',
         ))
-        fig_up.add_hline(y=0, line_dash='dash', line_color='lightgray', opacity=0.5)
+        fig_up.add_hline(y=0, line_dash='dash', line_color='white', opacity=0.4)
         fig_up.update_layout(
             title='종목별 애널리스트 목표주가 상승여력',
             xaxis_title='Ticker', yaxis_title='상승여력 (%)',
-            template='plotly_white',
-            height=380,
+            template='plotly_dark', height=380,
         )
         st.plotly_chart(fig_up, use_container_width=True)
 
@@ -1064,8 +1025,8 @@ def show_page3():
     def color_eps(val):
         try:
             v = float(val)
-            if v > 5:  return f'color: {COLORS["positive"]}; font-weight:bold'
-            if v < 0:  return f'color: {COLORS["negative"]}; font-weight:bold'
+            if v > 5:  return 'color: #2ecc71; font-weight:bold'
+            if v < 0:  return 'color: #e74c3c; font-weight:bold'
             return ''
         except: return ''
 
@@ -1082,18 +1043,16 @@ def show_page3():
         fig_pe = go.Figure()
         fig_pe.add_trace(go.Bar(
             x=pe_df['Ticker'], y=pe_df['Trailing PE'],
-            name='Trailing PE', marker_color=COLORS['palette'][0],
+            name='Trailing PE', marker_color='rgba(65,105,225,0.8)',
         ))
         fig_pe.add_trace(go.Bar(
             x=pe_df['Ticker'], y=pe_df['Forward PE'],
-            name='Forward PE', marker_color=COLORS['palette'][1],
+            name='Forward PE', marker_color='rgba(235,0,140,0.7)',
         ))
         fig_pe.update_layout(
             title='Trailing PE vs Forward PE',
             xaxis_title='Ticker', yaxis_title='PE Ratio',
-            barmode='group',
-            template='plotly_white',
-            height=380,
+            barmode='group', template='plotly_dark', height=380,
         )
         st.plotly_chart(fig_pe, use_container_width=True)
 
@@ -1104,7 +1063,14 @@ def show_page3():
 
 with st.sidebar:
     logo_url = "https://img.inhr.co.kr/static/careerlink/DSGN/250310110803368lsi.svg"
-    st.logo(logo_url)
+    st.markdown(
+        f"""
+        <div style="display: flex; ">
+            <img src="{logo_url}" width="200px" style="display: block;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.title("💡 Global Market")
     st.markdown("---")
@@ -1119,7 +1085,7 @@ with st.sidebar:
                     unsafe_allow_html=True)
     
     st.caption(f"Last visit: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    st.divider()
+    st.divider() # 구분선 추가
     st.caption(f"© 2026 KB Asset Management.")
     with st.expander("📄 MIT License Details"):
         st.markdown("""
@@ -1127,7 +1093,7 @@ with st.sidebar:
         
         Copyright (c) 2026 **KB Asset Management**
         
-        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction...
+        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files...
         
         ---
         *The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.*
