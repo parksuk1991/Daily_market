@@ -1080,7 +1080,7 @@ with st.sidebar:
     except Exception:
         pass
 
-    st.title("🌐 Global Market")
+    st.title("💡 Global Market")
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
