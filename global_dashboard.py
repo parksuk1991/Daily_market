@@ -909,10 +909,10 @@ def show_page1():
     for title, label2t, h in [
         ("📊 Equity", STOCK_ETFS, 489),
         ("🗠 Bond", BOND_ETFS, 385),
-        ("💱 Currency", CURRENCY, 284),
-        ("📈 Crypto", CRYPTO, 400),
-        ("📕 Style ETF", STYLE_ETFS, 260),
-        ("📘 Sector ETF", SECTOR_ETFS, 435),
+        ("💱 Currency", CURRENCY, 283),
+        ("📈 Crypto", CRYPTO, 385),
+        ("📕 Style ETF", STYLE_ETFS, 250),
+        ("📘 Sector ETF", SECTOR_ETFS, 430),
     ]:
         st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
