@@ -16,9 +16,6 @@ import feedparser
 from bs4 import BeautifulSoup
 import re
 from scipy import ndimage
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from matplotlib import cm
 
 warnings.filterwarnings('ignore')
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -69,15 +66,6 @@ _HEADERS = {
 }
 
 PERIOD_OPTIONS = [("6개월", 6), ("1년", 12), ("2년", 24), ("3년", 36)]
-TITLE_COLOR = "#605c4c"
-
-# ===== 투명도가 적용된 Wistia 컬러맵 생성 =====
-def create_transparent_wistia_cmap(alpha=0.5):
-    """Wistia 컬러맵에 투명도를 적용한 커스텀 컬러맵 생성"""
-    wistia_cmap = cm.get_cmap('Wistia')
-    colors = [wistia_cmap(i) for i in np.linspace(0, 1, wistia_cmap.N)]
-    colors_with_alpha = [(r, g, b, alpha) for r, g, b, a in colors]
-    return mcolors.ListedColormap(colors_with_alpha)
 
 # ======================================================
 # ETF Collector
@@ -756,9 +744,8 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """Wistia 색상 히트맵 적용 (투명도 조정)"""
+    """Wistia 색상 히트맵 적용"""
     styled = df.copy().style
-    transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
 
     for col in perf_cols:
         if col in df.columns:
@@ -774,7 +761,7 @@ def style_perf_table_with_databars(df, perf_cols):
                 
                 styled = styled.background_gradient(
                     subset=[col],
-                    cmap=transparent_wistia,
+                    cmap='Wistia',
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
@@ -912,7 +899,7 @@ def plot_maximum_drawdown(prices_df, asset_name):
 # Page 1: Market Performance
 # ======================================================
 def show_page1():
-    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🌐 Market Performance</h1>', unsafe_allow_html=True)
+    st.title("🌐 Market Performance")
     update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
 
     if update_clicked:
@@ -932,7 +919,7 @@ def show_page1():
         ("📕 Style ETF", STYLE_ETFS, 249),
         ("📘 Sector ETF", SECTOR_ETFS, 425),
     ]:
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">{title}</h2>', unsafe_allow_html=True)
+        st.subheader(title)
         with st.spinner(f"{title} 계산 중..."):
             perf = get_perf_table_improved(label2t)
         if not perf.empty:
@@ -947,15 +934,15 @@ def show_page1():
     tab1, tab2, tab3 = st.tabs(["📊 국가", "📗 섹터", "📙 스타일"])
 
     with tab1:
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">✅ 국가</h2>', unsafe_allow_html=True)
+        st.subheader("✅ 국가")
         render_comprehensive_chart(STOCK_ETFS, "stock_indices")
 
     with tab2:
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">☑️ 섹터</h2>', unsafe_allow_html=True)
+        st.subheader("☑️ 섹터")
         render_comprehensive_chart(SECTOR_ETFS, "sector")
 
     with tab3:
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">☑️ 스타일</h2>', unsafe_allow_html=True)
+        st.subheader("☑️ 스타일")
         render_comprehensive_chart(STYLE_ETFS, "style")
 
 
@@ -1008,7 +995,7 @@ def render_comprehensive_chart(label2t, chart_key):
             st.error(f"데이터 다운로드 실패: {str(e)}")
             return
 
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">📈 Cumulative Returns</h2>', unsafe_allow_html=True)
+        st.subheader("📈 Cumulative Returns")
         norm = prices_data / prices_data.iloc[0] * 100
         fig = go.Figure()
         colors_list = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
@@ -1035,7 +1022,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
         # ===== 4개 탭: Monthly Returns, Rolling Volatility, Rolling Sharpe, Maximum Drawdown =====
         st.markdown("---")
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">📊 분석 차트</h2>', unsafe_allow_html=True)
+        st.subheader("📊 분석 차트")
         
         tab_mr, tab_rv, tab_rs, tab_md = st.tabs(
             ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
@@ -1068,7 +1055,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
             # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
             st.markdown("---")
-            st.markdown(f'<h2 style="color: {TITLE_COLOR};">📉 Distribution of Monthly Returns</h2>', unsafe_allow_html=True)
+            st.subheader("📉 Distribution of Monthly Returns")
             
             all_stats = []
             for asset in assets:
@@ -1079,7 +1066,6 @@ def render_comprehensive_chart(label2t, chart_key):
             stats_df = pd.DataFrame(all_stats)
             styled = stats_df.style
             numeric_cols = [col for col in stats_df.columns if col != '자산']
-            transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
             
             for col in numeric_cols:
                 numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
@@ -1089,7 +1075,7 @@ def render_comprehensive_chart(label2t, chart_key):
                     vmax = valid_vals.max()
                     styled = styled.background_gradient(
                         subset=[col],
-                        cmap=transparent_wistia,
+                        cmap='Wistia',
                         vmin=vmin,
                         vmax=vmax,
                         low=0.3,
@@ -1179,7 +1165,7 @@ def render_comprehensive_chart(label2t, chart_key):
 # Page 2: LLM Analysis
 # ======================================================
 def show_page2():
-    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🤖 LLM 분석 — 뉴스 감성 분석</h1>', unsafe_allow_html=True)
+    st.title("🤖 LLM 분석 — 뉴스 감성 분석")
     st.caption("Yahoo Finance RSS에서 수집한 최근 3일 뉴스를 FinBERT로 감성 분석합니다.")
 
     col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
@@ -1255,7 +1241,7 @@ def show_page2():
 # Page 3: Analyst & Valuation
 # ======================================================
 def show_page3():
-    st.markdown(f'<h1 style="color: {TITLE_COLOR};">👨‍💼 애널리스트 & 밸류에이션</h1>', unsafe_allow_html=True)
+    st.title("👨‍💼 애널리스트 & 밸류에이션")
     st.caption(
         "• 등급 점수: 1=Strong Buy  2=Buy  3=Neutral  4=Sell  5=Strong Sell\n"
         "• 목표주가: 최근 3~6개월 애널리스트 리포트 평균\n"
@@ -1302,14 +1288,14 @@ def show_page3():
     val_df = data['valuation']
     holdings = data['holdings']
 
-    st.markdown(f'<h2 style="color: {TITLE_COLOR};">📦 {selected} — Top Holdings</h2>', unsafe_allow_html=True)
+    st.subheader(f"📦 {selected} — Top Holdings")
     holdings_df = pd.DataFrame(holdings)
     st.dataframe(holdings_df, use_container_width=True,
                  height=min(400, 40 + len(holdings_df) * 35))
 
     st.markdown("---")
 
-    st.markdown(f'<h2 style="color: {TITLE_COLOR};">👨‍💼 애널리스트 등급 & 목표주가</h2>', unsafe_allow_html=True)
+    st.subheader("👨‍💼 애널리스트 등급 & 목표주가")
     analyst_sorted = analyst_df.sort_values('상승여력(%)', ascending=False, na_position='last')
 
     def color_upside(val):
@@ -1343,10 +1329,9 @@ def show_page3():
     upside_vals = pd.to_numeric(analyst_sorted['상승여력(%)'], errors='coerce')
     valid_upside = upside_vals[upside_vals.notna()]
     if len(valid_upside) > 0:
-        transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
         styled_a = styled_a.background_gradient(
             subset=['상승여력(%)'], 
-            cmap=transparent_wistia, 
+            cmap='Wistia', 
             vmin=-20, 
             vmax=40, 
             low=0.3, 
@@ -1377,7 +1362,7 @@ def show_page3():
 
     st.markdown("---")
 
-    st.markdown(f'<h2 style="color: {TITLE_COLOR};">🔍 밸류에이션 & EPS</h2>', unsafe_allow_html=True)
+    st.subheader("🔍 밸류에이션 & EPS")
     val_sorted = val_df.sort_values('EPS 상승률(%)', ascending=False, na_position='last')
     fmt_v = {'Trailing PE': '{:.1f}', 'Forward PE': '{:.1f}',
              'Trailing EPS': '{:.2f}', 'Forward EPS': '{:.2f}', 'EPS 상승률(%)': '{:.2f}%'}
@@ -1400,10 +1385,9 @@ def show_page3():
     eps_vals = pd.to_numeric(val_sorted['EPS 상승률(%)'], errors='coerce')
     valid_eps = eps_vals[eps_vals.notna()]
     if len(valid_eps) > 0:
-        transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
         styled_v = styled_v.background_gradient(
             subset=['EPS 상승률(%)'], 
-            cmap=transparent_wistia, 
+            cmap='Wistia', 
             low=0.3, 
             high=0.3
         )
@@ -1444,7 +1428,7 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    st.markdown(f'<h1 style="color: {TITLE_COLOR};">💡 Global Market</h1>', unsafe_allow_html=True)
+    st.title("💡 Global Market")
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
