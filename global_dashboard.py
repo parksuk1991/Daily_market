@@ -755,68 +755,83 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 def style_perf_table_with_databars(df, perf_cols):
     """성능 테이블에 데이터바 적용 (양수: 황금색, 음수: 갈색)"""
-    # 인덱스를 다시 열로 변환 (안전성을 위해)
-    df_work = df.reset_index()
+    # 인덱스를 열로 변환
+    df_work = df.reset_index().copy()
     
-    styled = df_work.style
-    
-    # 각 성능 컬럼에 대해 bar chart 적용
-    for col in perf_cols:
-        if col not in df_work.columns:
-            continue
-        
-        try:
-            # 숫자 값 추출 (NaN은 0으로 대체)
-            numeric_vals = pd.to_numeric(df_work[col], errors='coerce')
-            
-            # NaN을 0으로 임시 대체
-            df_work[col] = numeric_vals.fillna(0)
-            
-            # 범위 계산 (원본 데이터 기반, NaN 제외)
-            valid_vals = numeric_vals.dropna()
-            
-            if len(valid_vals) == 0:
-                continue
-            
-            vmin = valid_vals.min()
-            vmax = valid_vals.max()
-            
-            # 양수/음수 대칭 범위
-            range_val = max(abs(vmin), abs(vmax), 1)
-            
-            # bar 적용
-            styled = styled.bar(
-                subset=[col],
-                color=['rgba(255,188,0,0.7)', 'rgba(96,88,76,0.9)'],
-                vmin=-range_val,
-                vmax=range_val,
-                width=95,
-                align='mid'
-            )
-        except Exception as e:
-            continue
-    
-    # 포맷팅 (숫자를 소수점 2자리까지 표시)
+    # 숫자 값으로 변환하되, 원본 df 유지
     for col in perf_cols:
         if col in df_work.columns:
             df_work[col] = pd.to_numeric(df_work[col], errors='coerce')
     
-    format_dict = {col: '{:.2f}' for col in perf_cols if col in df_work.columns}
+    # Styler 생성
+    styled = df_work.style
+    
+    # 각 성능 컬럼별로 background 적용
+    for col in perf_cols:
+        if col not in df_work.columns:
+            continue
+        
+        numeric_vals = df_work[col]
+        valid_vals = numeric_vals.dropna()
+        
+        if len(valid_vals) == 0:
+            continue
+        
+        vmin = valid_vals.min()
+        vmax = valid_vals.max()
+        range_val = max(abs(vmin), abs(vmax), 1)
+        
+        # 양수/음수별 색상 지정
+        def color_negative_red(v):
+            """양수는 황금색, 음수는 갈색"""
+            if pd.isna(v):
+                return ''
+            
+            if v >= 0:
+                # 양수: 황금색 (0~100%)
+                intensity = v / range_val
+                intensity = max(0, min(intensity, 1))
+                # rgba(255,188,0,0.7)에서 0.1~0.7 사이로 투명도 조정
+                alpha = 0.1 + (intensity * 0.6)
+                return f'background-color: rgba(255,188,0,{alpha:.2f});'
+            else:
+                # 음수: 갈색 (0~100%)
+                intensity = abs(v) / range_val
+                intensity = max(0, min(intensity, 1))
+                # rgba(96,88,76,0.9)에서 0.1~0.9 사이로 투명도 조정
+                alpha = 0.1 + (intensity * 0.8)
+                return f'background-color: rgba(96,88,76,{alpha:.2f});'
+        
+        # 색상 적용
+        styled = styled.map(color_negative_red, subset=[col])
+    
+    # 포맷팅: 성능 컬럼
+    format_dict = {}
+    for col in perf_cols:
+        if col in df.columns:
+            format_dict[col] = '{:.2f}'
+    
     if format_dict:
         styled = styled.format(format_dict, na_rep='—')
     
-    # 셀 스타일 (공통)
+    # 현재값 포맷팅
+    if '현재값' in df.columns:
+        styled = styled.format({'현재값': '{}'}, na_rep='N/A')
+    
+    # 셀 스타일
     styled = styled.set_properties(**{
         'border': '1px solid #d0d0d0',
         'text-align': 'center',
-        'padding': '6px',
+        'padding': '6px 4px',
+        'font-weight': '500',
+        'font-size': '13px',
     })
     
-    # 자산명 열 스타일 (인덱스로 돌아간 경우)
+    # 자산명 열 스타일
     if '자산명' in df_work.columns:
         styled = styled.set_properties(**{
             'text-align': 'left',
-            'padding-left': '12px',
+            'padding-left': '10px',
             'font-weight': 'bold',
         }, subset=['자산명'])
     
@@ -824,12 +839,9 @@ def style_perf_table_with_databars(df, perf_cols):
     if '현재값' in df_work.columns:
         styled = styled.set_properties(**{
             'text-align': 'right',
-            'padding-right': '12px',
+            'padding-right': '8px',
             'font-weight': 'bold',
         }, subset=['현재값'])
-    
-    # 다시 인덱스로 설정
-    styled = styled.hide(axis='index')
     
     return styled
 
