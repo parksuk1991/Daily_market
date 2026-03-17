@@ -16,6 +16,9 @@ import feedparser
 from bs4 import BeautifulSoup
 import re
 from scipy import ndimage
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from matplotlib import cm
 
 warnings.filterwarnings('ignore')
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -67,6 +70,14 @@ _HEADERS = {
 
 PERIOD_OPTIONS = [("6개월", 6), ("1년", 12), ("2년", 24), ("3년", 36)]
 TITLE_COLOR = "#605c4c"
+
+# ===== 투명도가 적용된 Wistia 컬러맵 생성 =====
+def create_transparent_wistia_cmap(alpha=0.5):
+    """Wistia 컬러맵에 투명도를 적용한 커스텀 컬러맵 생성"""
+    wistia_cmap = cm.get_cmap('Wistia')
+    colors = [wistia_cmap(i) for i in np.linspace(0, 1, wistia_cmap.N)]
+    colors_with_alpha = [(r, g, b, alpha) for r, g, b, a in colors]
+    return mcolors.ListedColormap(colors_with_alpha)
 
 # ======================================================
 # ETF Collector
@@ -745,8 +756,9 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """Wistia 색상 히트맵 적용"""
+    """Wistia 색상 히트맵 적용 (투명도 조정)"""
     styled = df.copy().style
+    transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
 
     for col in perf_cols:
         if col in df.columns:
@@ -762,7 +774,7 @@ def style_perf_table_with_databars(df, perf_cols):
                 
                 styled = styled.background_gradient(
                     subset=[col],
-                    cmap='Wistia',
+                    cmap=transparent_wistia,
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
@@ -1067,6 +1079,7 @@ def render_comprehensive_chart(label2t, chart_key):
             stats_df = pd.DataFrame(all_stats)
             styled = stats_df.style
             numeric_cols = [col for col in stats_df.columns if col != '자산']
+            transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
             
             for col in numeric_cols:
                 numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
@@ -1076,7 +1089,7 @@ def render_comprehensive_chart(label2t, chart_key):
                     vmax = valid_vals.max()
                     styled = styled.background_gradient(
                         subset=[col],
-                        cmap='Wistia',
+                        cmap=transparent_wistia,
                         vmin=vmin,
                         vmax=vmax,
                         low=0.3,
@@ -1330,9 +1343,10 @@ def show_page3():
     upside_vals = pd.to_numeric(analyst_sorted['상승여력(%)'], errors='coerce')
     valid_upside = upside_vals[upside_vals.notna()]
     if len(valid_upside) > 0:
+        transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
         styled_a = styled_a.background_gradient(
             subset=['상승여력(%)'], 
-            cmap='Wistia', 
+            cmap=transparent_wistia, 
             vmin=-20, 
             vmax=40, 
             low=0.3, 
@@ -1386,9 +1400,10 @@ def show_page3():
     eps_vals = pd.to_numeric(val_sorted['EPS 상승률(%)'], errors='coerce')
     valid_eps = eps_vals[eps_vals.notna()]
     if len(valid_eps) > 0:
+        transparent_wistia = create_transparent_wistia_cmap(alpha=0.5)
         styled_v = styled_v.background_gradient(
             subset=['EPS 상승률(%)'], 
-            cmap='Wistia', 
+            cmap=transparent_wistia, 
             low=0.3, 
             high=0.3
         )
