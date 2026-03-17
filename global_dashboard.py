@@ -755,70 +755,81 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 def style_perf_table_with_databars(df, perf_cols):
     """성능 테이블에 데이터바 적용 (양수: 황금색, 음수: 갈색)"""
-    # 스타일링용 데이터프레임 생성 (NaN을 0으로 대체)
-    df_style = df.copy()
+    # 인덱스를 다시 열로 변환 (안전성을 위해)
+    df_work = df.reset_index()
     
-    # 각 성능 컬럼 처리
+    styled = df_work.style
+    
+    # 각 성능 컬럼에 대해 bar chart 적용
     for col in perf_cols:
-        if col in df_style.columns:
-            numeric_vals = pd.to_numeric(df[col], errors='coerce')
-            # NaN을 0으로 대체
-            df_style[col] = numeric_vals.fillna(0)
-    
-    styled = df_style.style
-    
-    # 모든 성능 컬럼에 bar chart 적용
-    for col in perf_cols:
-        if col in df_style.columns:
-            numeric_vals = pd.to_numeric(df[col], errors='coerce')
-            valid_vals = numeric_vals[numeric_vals.notna()]
+        if col not in df_work.columns:
+            continue
+        
+        try:
+            # 숫자 값 추출 (NaN은 0으로 대체)
+            numeric_vals = pd.to_numeric(df_work[col], errors='coerce')
             
-            if len(valid_vals) > 0:
-                vmin = valid_vals.min()
-                vmax = valid_vals.max()
-                # 양수/음수 모두 포함하는 범위 설정
-                range_val = max(abs(vmin), abs(vmax), 1)
-                
-                styled = styled.bar(
-                    subset=[col],
-                    color=['rgba(255,188,0,0.7)', 'rgba(96,88,76,0.9)'],  # [양수, 음수]
-                    vmin=-range_val,
-                    vmax=range_val,
-                    width=100,
-                    align='mid'
-                )
+            # NaN을 0으로 임시 대체
+            df_work[col] = numeric_vals.fillna(0)
+            
+            # 범위 계산 (원본 데이터 기반, NaN 제외)
+            valid_vals = numeric_vals.dropna()
+            
+            if len(valid_vals) == 0:
+                continue
+            
+            vmin = valid_vals.min()
+            vmax = valid_vals.max()
+            
+            # 양수/음수 대칭 범위
+            range_val = max(abs(vmin), abs(vmax), 1)
+            
+            # bar 적용
+            styled = styled.bar(
+                subset=[col],
+                color=['rgba(255,188,0,0.7)', 'rgba(96,88,76,0.9)'],
+                vmin=-range_val,
+                vmax=range_val,
+                width=95,
+                align='mid'
+            )
+        except Exception as e:
+            continue
     
-    # 포맷팅 (NaN은 '—'로 표시)
-    format_dict = {col: '{:.2f}' for col in perf_cols if col in df.columns}
+    # 포맷팅 (숫자를 소수점 2자리까지 표시)
+    for col in perf_cols:
+        if col in df_work.columns:
+            df_work[col] = pd.to_numeric(df_work[col], errors='coerce')
+    
+    format_dict = {col: '{:.2f}' for col in perf_cols if col in df_work.columns}
     if format_dict:
         styled = styled.format(format_dict, na_rep='—')
     
-    # 셀 스타일
+    # 셀 스타일 (공통)
     styled = styled.set_properties(**{
         'border': '1px solid #d0d0d0',
-        'padding': '8px',
         'text-align': 'center',
-        'height': '30px',
-        'vertical-align': 'middle',
+        'padding': '6px',
     })
     
-    # 자산명 열 스타일 (좌측 정렬, 더 넓음)
-    styled = styled.set_properties(**{
-        'text-align': 'left',
-        'padding-left': '12px',
-        'min-width': '150px',
-        'white-space': 'nowrap',
-        'font-weight': 'bold',
-    }, subset=['자산명'])
+    # 자산명 열 스타일 (인덱스로 돌아간 경우)
+    if '자산명' in df_work.columns:
+        styled = styled.set_properties(**{
+            'text-align': 'left',
+            'padding-left': '12px',
+            'font-weight': 'bold',
+        }, subset=['자산명'])
     
     # 현재값 열 스타일
-    if '현재값' in df.columns:
+    if '현재값' in df_work.columns:
         styled = styled.set_properties(**{
             'text-align': 'right',
             'padding-right': '12px',
-            'min-width': '100px',
             'font-weight': 'bold',
         }, subset=['현재값'])
+    
+    # 다시 인덱스로 설정
+    styled = styled.hide(axis='index')
     
     return styled
 
@@ -975,21 +986,21 @@ def show_page1():
         with st.spinner(f"{title} 계산 중..."):
             perf = get_perf_table_improved(label2t)
         if not perf.empty:
-            styled_df = style_perf_table_with_databars(perf.set_index('자산명'), perf_cols)
+            # 자산명 인덱스로 설정
+            perf_indexed = perf.set_index('자산명')
             
-            # column_config로 열의 너비 조정
-            col_config = {
-                '현재값': st.column_config.TextColumn(width='medium'),
-            }
-            for col in perf_cols:
-                col_config[col] = st.column_config.TextColumn(width='small')
-            
-            st.dataframe(
-                styled_df,
-                column_config=col_config,
-                use_container_width=True,
-                height=h
-            )
+            # 스타일링 적용
+            try:
+                styled_df = style_perf_table_with_databars(perf_indexed, perf_cols)
+                st.dataframe(
+                    styled_df,
+                    use_container_width=True,
+                    height=h
+                )
+            except Exception as e:
+                # 스타일링 실패 시 원본 데이터 표시
+                st.warning(f"테이블 스타일링 중 오류 발생. 원본 데이터를 표시합니다.")
+                st.dataframe(perf, use_container_width=True, height=h)
 
     st.markdown("---")
 
