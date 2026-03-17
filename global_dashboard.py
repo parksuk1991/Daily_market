@@ -755,58 +755,70 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 def style_perf_table_with_databars(df, perf_cols):
     """성능 테이블에 데이터바 적용 (양수: 황금색, 음수: 갈색)"""
-    styled = df.copy().style
+    # 스타일링용 데이터프레임 생성 (NaN을 0으로 대체)
+    df_style = df.copy()
     
-    # bar 차트 적용 (숫자 데이터에 적용)
+    # 각 성능 컬럼 처리
     for col in perf_cols:
-        if col in df.columns:
-            # 숫자 값 추출
+        if col in df_style.columns:
+            numeric_vals = pd.to_numeric(df[col], errors='coerce')
+            # NaN을 0으로 대체
+            df_style[col] = numeric_vals.fillna(0)
+    
+    styled = df_style.style
+    
+    # 모든 성능 컬럼에 bar chart 적용
+    for col in perf_cols:
+        if col in df_style.columns:
             numeric_vals = pd.to_numeric(df[col], errors='coerce')
             valid_vals = numeric_vals[numeric_vals.notna()]
             
             if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
+                # 양수/음수 모두 포함하는 범위 설정
+                range_val = max(abs(vmin), abs(vmax), 1)
                 
-                # bar 스타일 적용 (양수: 황금색, 음수: 갈색)
                 styled = styled.bar(
                     subset=[col],
                     color=['rgba(255,188,0,0.7)', 'rgba(96,88,76,0.9)'],  # [양수, 음수]
-                    vmin=vmin,
-                    vmax=vmax,
+                    vmin=-range_val,
+                    vmax=range_val,
                     width=100,
-                    align='mid'  # 0을 기준으로 양쪽으로 확장
+                    align='mid'
                 )
     
-    # 포맷팅 적용 (숫자 → 문자열)
-    format_dict = {}
-    for col in perf_cols:
-        if col in df.columns:
-            format_dict[col] = '{:.2f}'
-    
+    # 포맷팅 (NaN은 '—'로 표시)
+    format_dict = {col: '{:.2f}' for col in perf_cols if col in df.columns}
     if format_dict:
-        styled = styled.format(format_dict, na_rep='N/A')
+        styled = styled.format(format_dict, na_rep='—')
     
-    # 텍스트 색상을 동적으로 적용하는 함수
-    def get_dynamic_text_color(val):
-        """배경이 어두우면 흰색, 밝으면 검은색 폰트 적용"""
-        try:
-            numeric_val = float(val)
-            # 절대값이 클수록 배경이 진함 -> 흰색 폰트
-            if abs(numeric_val) > 2.5:
-                return 'color: white; font-weight: bold'
-            else:
-                return 'color: black; font-weight: bold'
-        except:
-            return 'color: black'
+    # 셀 스타일
+    styled = styled.set_properties(**{
+        'border': '1px solid #d0d0d0',
+        'padding': '8px',
+        'text-align': 'center',
+        'height': '30px',
+        'vertical-align': 'middle',
+    })
     
-    # 성능 컬럼에 텍스트 색상 적용
-    for col in perf_cols:
-        if col in df.columns:
-            styled = styled.map(get_dynamic_text_color, subset=[col])
+    # 자산명 열 스타일 (좌측 정렬, 더 넓음)
+    styled = styled.set_properties(**{
+        'text-align': 'left',
+        'padding-left': '12px',
+        'min-width': '150px',
+        'white-space': 'nowrap',
+        'font-weight': 'bold',
+    }, subset=['자산명'])
     
-    # 셀에 테두리 추가
-    styled = styled.set_properties(**{'border': '1px solid #d0d0d0'})
+    # 현재값 열 스타일
+    if '현재값' in df.columns:
+        styled = styled.set_properties(**{
+            'text-align': 'right',
+            'padding-right': '12px',
+            'min-width': '100px',
+            'font-weight': 'bold',
+        }, subset=['현재값'])
     
     return styled
 
@@ -963,8 +975,18 @@ def show_page1():
         with st.spinner(f"{title} 계산 중..."):
             perf = get_perf_table_improved(label2t)
         if not perf.empty:
+            styled_df = style_perf_table_with_databars(perf.set_index('자산명'), perf_cols)
+            
+            # column_config로 열의 너비 조정
+            col_config = {
+                '현재값': st.column_config.TextColumn(width='medium'),
+            }
+            for col in perf_cols:
+                col_config[col] = st.column_config.TextColumn(width='small')
+            
             st.dataframe(
-                style_perf_table_with_databars(perf.set_index('자산명'), perf_cols),
+                styled_df,
+                column_config=col_config,
                 use_container_width=True,
                 height=h
             )
