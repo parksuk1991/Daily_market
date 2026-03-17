@@ -913,13 +913,13 @@ def plot_maximum_drawdown(prices_df, asset_name):
 def show_page1():
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">🌐 Market Performance</h1>', unsafe_allow_html=True)
     update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
+    st.markdown("추후 펀드 내 실제 보유 자산들로 구성하여 개발 예정")
 
     if update_clicked:
         st.session_state['p1_updated'] = True
 
     if not st.session_state.get('p1_updated', False):
         st.info("🔄 Update 버튼을 눌러 데이터를 불러오세요.")
-        st.info("추후 펀드 내 실제 보유 자산들로 구성하여 개발 예정")
         return
 
     perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
