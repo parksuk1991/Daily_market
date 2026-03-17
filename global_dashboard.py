@@ -26,7 +26,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="Global Market Monitoring", page_icon="🌐", layout="wide")
 
-# ===== 자산 정의 =====
+# ===== 자산 정의 ===== 이건 테스트용이고 추후에 실제 펀드 보유 자산으로 동적으로 변경 필요 
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY', 'NASDAQ 100 (QQQ)': 'QQQ', '전세계 (ACWI)': 'ACWI',
     '선진국 (VEA)': 'VEA', '신흥국 (VWO)': 'VWO', '유럽(Europe, VGK)': 'VGK',
@@ -71,7 +71,6 @@ _HEADERS = {
 PERIOD_OPTIONS = [("6개월", 6), ("1년", 12), ("2년", 24), ("3년", 36)]
 TITLE_COLOR = "#605c4c"
 
-# ===== 투명도가 적용된 Wistia 컬러맵 생성 =====
 def create_transparent_wistia_cmap(alpha=0.4):
     """Wistia 컬러맵에 투명도를 적용한 커스텀 컬러맵 생성"""
     wistia_cmap = cm.get_cmap('Wistia')
@@ -559,7 +558,7 @@ def render_news_table(df: pd.DataFrame):
 
 
 # ======================================================
-# Analyst & Valuation Functions - 강화된 버전
+# Analyst & Valuation Functions
 # ======================================================
 @st.cache_data(ttl=3600)
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
@@ -995,7 +994,6 @@ def render_comprehensive_chart(label2t, chart_key):
             if isinstance(prices_data, pd.Series):
                 prices_data = prices_data.to_frame()
 
-            # 컬럼 매칭 수정
             rename_dict = {}
             for label, ticker in label2t.items():
                 if ticker in prices_data.columns:
@@ -1041,7 +1039,7 @@ def render_comprehensive_chart(label2t, chart_key):
             ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
         )
 
-        # Tab 1: Monthly Returns (Distribution of Monthly Returns 포함)
+        # Tab 1: Monthly Returns (+Distribution of Monthly Returns)
         with tab_mr:
             st.caption("각 자산의 월별 수익률")
             for i in range(0, len(assets), 2):
@@ -1148,7 +1146,7 @@ def render_comprehensive_chart(label2t, chart_key):
                     except Exception as e:
                         cols[1].error(f"{asset2} 실패")
 
-        # Tab 4: Maximum Drawdown - 전체 자산
+        # Tab 4: Maximum Drawdown
         with tab_md:
             st.caption("Maximum Drawdown")
             
