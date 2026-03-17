@@ -762,7 +762,6 @@ def style_perf_table_with_databars(df, perf_cols):
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='Wistia',
-                    alpha=0.6,
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
@@ -1077,7 +1076,6 @@ def render_comprehensive_chart(label2t, chart_key):
                     styled = styled.background_gradient(
                         subset=[col],
                         cmap='Wistia',
-                        alpha=0.6,
                         vmin=vmin,
                         vmax=vmax,
                         low=0.3,
@@ -1334,7 +1332,6 @@ def show_page3():
         styled_a = styled_a.background_gradient(
             subset=['상승여력(%)'], 
             cmap='Wistia', 
-            alpha=0.6,
             vmin=-20, 
             vmax=40, 
             low=0.3, 
@@ -1391,7 +1388,6 @@ def show_page3():
         styled_v = styled_v.background_gradient(
             subset=['EPS 상승률(%)'], 
             cmap='Wistia', 
-            alpha=0.6,
             low=0.3, 
             high=0.3
         )
