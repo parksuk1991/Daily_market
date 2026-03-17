@@ -744,7 +744,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """autumn 색상 히트맵 적용"""
+    """inferno 색상 히트맵 적용"""
     styled = df.copy().style
 
     for col in perf_cols:
@@ -761,7 +761,7 @@ def style_perf_table_with_databars(df, perf_cols):
                 
                 styled = styled.background_gradient(
                     subset=[col],
-                    cmap='autumn',
+                    cmap='inferno',
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
@@ -1075,7 +1075,7 @@ def render_comprehensive_chart(label2t, chart_key):
                     vmax = valid_vals.max()
                     styled = styled.background_gradient(
                         subset=[col],
-                        cmap='autumn',
+                        cmap='inferno',
                         vmin=vmin,
                         vmax=vmax,
                         low=0.3,
@@ -1331,7 +1331,7 @@ def show_page3():
     if len(valid_upside) > 0:
         styled_a = styled_a.background_gradient(
             subset=['상승여력(%)'], 
-            cmap='autumn', 
+            cmap='inferno', 
             vmin=-20, 
             vmax=40, 
             low=0.3, 
@@ -1387,7 +1387,7 @@ def show_page3():
     if len(valid_eps) > 0:
         styled_v = styled_v.background_gradient(
             subset=['EPS 상승률(%)'], 
-            cmap='autumn', 
+            cmap='inferno', 
             low=0.3, 
             high=0.3
         )
