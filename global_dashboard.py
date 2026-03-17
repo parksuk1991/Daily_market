@@ -755,31 +755,55 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """Wistia 색상 히트맵 적용 (투명도 조정)"""
+    """성능 테이블에 데이터바 적용 (양수: 황금색, 음수: 갈색)"""
     styled = df.copy().style
-    transparent_wistia = create_transparent_wistia_cmap(alpha=0.4)
-
+    
+    # bar 차트 적용
     for col in perf_cols:
         if col in df.columns:
+            # 문자열을 숫자로 변환
             numeric_vals = pd.to_numeric(
                 df[col].astype(str).str.replace('%', '').str.strip(),
                 errors='coerce'
             )
+            
             valid_vals = numeric_vals[numeric_vals.notna()]
             
             if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
-                styled = styled.background_gradient(
+                # bar 스타일 적용 (양수: 황금색, 음수: 갈색)
+                styled = styled.bar(
                     subset=[col],
-                    cmap=transparent_wistia,
+                    color=['rgba(255,188,0,0.7)', 'rgba(96,88,76,0.9)'],  # [양수, 음수]
                     vmin=vmin,
                     vmax=vmax,
-                    low=0.3,
-                    high=0.3
+                    width=100,
+                    align='mid'  # 0을 기준으로 양쪽으로 확장
                 )
-
+    
+    # 텍스트 색상을 동적으로 적용하는 함수
+    def get_dynamic_text_color(val):
+        """배경이 어두우면 흰색, 밝으면 검은색 폰트 적용"""
+        try:
+            numeric_val = float(str(val).replace('%', '').strip())
+            # 절대값이 클수록 배경이 진함 -> 흰색 폰트
+            if abs(numeric_val) > 2.5:
+                return 'color: white; font-weight: bold'
+            else:
+                return 'color: black; font-weight: bold'
+        except:
+            return 'color: black'
+    
+    # 성능 컬럼에 텍스트 색상 적용
+    for col in perf_cols:
+        if col in df.columns:
+            styled = styled.map(get_dynamic_text_color, subset=[col])
+    
+    # 셀에 테두리 추가
+    styled = styled.set_properties(**{'border': '1px solid #d0d0d0'})
+    
     return styled
 
 
