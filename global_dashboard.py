@@ -777,7 +777,7 @@ def style_perf_table_with_databars(df, perf_cols):
 def plot_monthly_returns(prices_df, asset_name):
     monthly = prices_df.resample('M').last()
     returns = monthly.pct_change().dropna() * 100
-    colors = ['#2ecc71' if x > 0 else '#e74c3c' for x in returns.iloc[:, 0]]
+    colors = ['#FFBC00' if x > 0 else '#60584c' for x in returns.iloc[:, 0]]
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=returns.index.strftime('%Y-%m'),
@@ -1136,7 +1136,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
         # Tab 4: Maximum Drawdown - 전체 자산
         with tab_md:
-            st.caption("Maximum Drawdown Analysis - 전체 자산")
+            st.caption("Maximum Drawdown")
             
             for i in range(0, len(assets), 2):
                 cols = st.columns(2)
