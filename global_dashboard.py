@@ -743,14 +743,13 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
     df_r = pd.DataFrame(results)
     
+    # 현재값만 문자열로 변환 (포맷팅)
     if '현재값' in df_r.columns:
         df_r['현재값'] = df_r['현재값'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
     
-    perf_cols = ['1D(%)', '1W(%)', 'MTD(%)', '1M(%)', '3M(%)', '6M(%)', 'YTD(%)', '1Y(%)', '3Y(%)']
-    for col in perf_cols:
-        if col in df_r.columns:
-            df_r[col] = df_r[col].apply(lambda x: format_number(x, 2) if pd.notnull(x) else "N/A")
-
+    # 성능 컬럼은 숫자 그대로 유지 (bar chart용)
+    # 포맷팅은 style 함수에서 처리
+    
     return df_r
 
 
@@ -758,15 +757,11 @@ def style_perf_table_with_databars(df, perf_cols):
     """성능 테이블에 데이터바 적용 (양수: 황금색, 음수: 갈색)"""
     styled = df.copy().style
     
-    # bar 차트 적용
+    # bar 차트 적용 (숫자 데이터에 적용)
     for col in perf_cols:
         if col in df.columns:
-            # 문자열을 숫자로 변환
-            numeric_vals = pd.to_numeric(
-                df[col].astype(str).str.replace('%', '').str.strip(),
-                errors='coerce'
-            )
-            
+            # 숫자 값 추출
+            numeric_vals = pd.to_numeric(df[col], errors='coerce')
             valid_vals = numeric_vals[numeric_vals.notna()]
             
             if len(valid_vals) > 0:
@@ -783,11 +778,20 @@ def style_perf_table_with_databars(df, perf_cols):
                     align='mid'  # 0을 기준으로 양쪽으로 확장
                 )
     
+    # 포맷팅 적용 (숫자 → 문자열)
+    format_dict = {}
+    for col in perf_cols:
+        if col in df.columns:
+            format_dict[col] = '{:.2f}'
+    
+    if format_dict:
+        styled = styled.format(format_dict, na_rep='N/A')
+    
     # 텍스트 색상을 동적으로 적용하는 함수
     def get_dynamic_text_color(val):
         """배경이 어두우면 흰색, 밝으면 검은색 폰트 적용"""
         try:
-            numeric_val = float(str(val).replace('%', '').strip())
+            numeric_val = float(val)
             # 절대값이 클수록 배경이 진함 -> 흰색 폰트
             if abs(numeric_val) > 2.5:
                 return 'color: white; font-weight: bold'
