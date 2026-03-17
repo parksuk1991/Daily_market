@@ -709,14 +709,14 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     return df_r
 
 
-def style_perf_table_with_databars(df, perf_cols):
-    """Wistia 색상 scheme 적용 - 정확하고 깔끔하게"""
-    styled = df.copy().style
-
-    for col in perf_cols:
-        if col in df.columns:
+def apply_wistia_heatmap(styled_df, column_list):
+    """Wistia 색상 heatmap 적용 - na_rep 없이"""
+    styled = styled_df.copy()
+    
+    for col in column_list:
+        if col in styled_df.columns:
             numeric_vals = pd.to_numeric(
-                df[col].astype(str).str.replace('%', '').str.strip(),
+                styled_df[col].astype(str).str.replace('%', '').str.strip(),
                 errors='coerce'
             )
             valid_vals = numeric_vals[numeric_vals.notna()]
@@ -724,8 +724,6 @@ def style_perf_table_with_databars(df, perf_cols):
             if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
-                
-                # background_gradient에서 na_rep 제거
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='Wistia',
@@ -734,7 +732,7 @@ def style_perf_table_with_databars(df, perf_cols):
                     low=0.3,
                     high=0.3
                 )
-
+    
     return styled
 
 
@@ -971,8 +969,9 @@ def show_page1():
         with st.spinner(f"{title} 계산 중..."):
             perf = get_perf_table_improved(label2t)
         if not perf.empty:
+            styled_perf = apply_wistia_heatmap(perf.set_index('자산명').style, perf_cols)
             st.dataframe(
-                style_perf_table_with_databars(perf.set_index('자산명'), perf_cols),
+                styled_perf,
                 use_container_width=True,
                 height=h
             )
@@ -1032,7 +1031,6 @@ def render_comprehensive_chart(label2t, chart_key):
             if isinstance(prices_data, pd.Series):
                 prices_data = prices_data.to_frame()
 
-            # 컬럼을 label로 올바르게 매칭
             rename_dict = {}
             for label, ticker in label2t.items():
                 if ticker in prices_data.columns:
@@ -1070,7 +1068,6 @@ def render_comprehensive_chart(label2t, chart_key):
 
         assets = list(prices_data.columns)
 
-        # ===== Horizon Charts =====
         st.markdown("---")
         st.subheader("⚡ Horizon Charts - 공간 효율적 분석")
         
@@ -1111,7 +1108,6 @@ def render_comprehensive_chart(label2t, chart_key):
             except Exception as e:
                 st.error(f"오류: {str(e)}")
         
-        # ===== Maximum Drawdown =====
         st.markdown("---")
         st.subheader("📉 Maximum Drawdown Analysis")
         
@@ -1125,7 +1121,6 @@ def render_comprehensive_chart(label2t, chart_key):
                 except Exception as e:
                     st.error(f"{asset} 계산 실패")
         
-        # ===== Distribution Statistics =====
         st.markdown("---")
         st.subheader("📉 Distribution of Monthly Returns")
         
@@ -1136,26 +1131,8 @@ def render_comprehensive_chart(label2t, chart_key):
             all_stats.append(stats)
         
         stats_df = pd.DataFrame(all_stats)
-        
-        styled = stats_df.style
-        numeric_cols = [col for col in stats_df.columns if col != '자산']
-        
-        for col in numeric_cols:
-            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
-            valid_vals = numeric_vals[numeric_vals.notna()]
-            if len(valid_vals) > 0:
-                vmin = valid_vals.min()
-                vmax = valid_vals.max()
-                styled = styled.background_gradient(
-                    subset=[col],
-                    cmap='Wistia',
-                    vmin=vmin,
-                    vmax=vmax,
-                    low=0.3,
-                    high=0.3
-                )
-        
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        styled_stats = apply_wistia_heatmap(stats_df.style, [col for col in stats_df.columns if col != '자산'])
+        st.dataframe(styled_stats, use_container_width=True, hide_index=True)
 
 
 # ======================================================
@@ -1323,17 +1300,7 @@ def show_page3():
                 .map(color_upside, subset=['상승여력(%)'])
                 .map(color_rating, subset=['등급 점수']))
     
-    upside_vals = pd.to_numeric(analyst_sorted['상승여력(%)'], errors='coerce')
-    valid_upside = upside_vals[upside_vals.notna()]
-    if len(valid_upside) > 0:
-        styled_a = styled_a.background_gradient(
-            subset=['상승여력(%)'], 
-            cmap='Wistia', 
-            vmin=-20, 
-            vmax=40, 
-            low=0.3, 
-            high=0.3
-        )
+    styled_a = apply_wistia_heatmap(styled_a, ['상승여력(%)'])
     
     st.dataframe(styled_a, use_container_width=True,
                  height=min(500, 40 + len(analyst_sorted) * 35))
@@ -1379,15 +1346,7 @@ def show_page3():
                 .format(fmt_v, na_rep='N/A')
                 .map(color_eps, subset=['EPS 상승률(%)']))
     
-    eps_vals = pd.to_numeric(val_sorted['EPS 상승률(%)'], errors='coerce')
-    valid_eps = eps_vals[eps_vals.notna()]
-    if len(valid_eps) > 0:
-        styled_v = styled_v.background_gradient(
-            subset=['EPS 상승률(%)'], 
-            cmap='Wistia', 
-            low=0.3, 
-            high=0.3
-        )
+    styled_v = apply_wistia_heatmap(styled_v, ['EPS 상승률(%)'])
     
     st.dataframe(styled_v, use_container_width=True,
                  height=min(500, 40 + len(val_sorted) * 35))
