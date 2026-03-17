@@ -1020,7 +1020,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 line=dict(color=colors_list[i % len(colors_list)], width=2.5),
             ))
         fig.update_layout(
-            yaxis_title="누적수익률(%)",
+            yaxis_title="누적 성과",
             template="plotly_white",
             height=420,
             legend=dict(orientation='h', y=1.15, x=0),
