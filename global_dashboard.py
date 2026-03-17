@@ -66,6 +66,7 @@ _HEADERS = {
 }
 
 PERIOD_OPTIONS = [("6개월", 6), ("1년", 12), ("2년", 24), ("3년", 36)]
+TITLE_COLOR = "#605c4c"
 
 # ======================================================
 # ETF Collector
@@ -899,7 +900,7 @@ def plot_maximum_drawdown(prices_df, asset_name):
 # Page 1: Market Performance
 # ======================================================
 def show_page1():
-    st.title("🌐 Market Performance")
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🌐 Market Performance</h1>', unsafe_allow_html=True)
     update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
 
     if update_clicked:
@@ -919,7 +920,7 @@ def show_page1():
         ("📕 Style ETF", STYLE_ETFS, 249),
         ("📘 Sector ETF", SECTOR_ETFS, 425),
     ]:
-        st.subheader(title)
+        st.markdown(f'<h2 style="color: {TITLE_COLOR};">{title}</h2>', unsafe_allow_html=True)
         with st.spinner(f"{title} 계산 중..."):
             perf = get_perf_table_improved(label2t)
         if not perf.empty:
@@ -934,15 +935,15 @@ def show_page1():
     tab1, tab2, tab3 = st.tabs(["📊 국가", "📗 섹터", "📙 스타일"])
 
     with tab1:
-        st.subheader("✅ 국가")
+        st.markdown(f'<h2 style="color: {TITLE_COLOR};">✅ 국가</h2>', unsafe_allow_html=True)
         render_comprehensive_chart(STOCK_ETFS, "stock_indices")
 
     with tab2:
-        st.subheader("☑️ 섹터")
+        st.markdown(f'<h2 style="color: {TITLE_COLOR};">☑️ 섹터</h2>', unsafe_allow_html=True)
         render_comprehensive_chart(SECTOR_ETFS, "sector")
 
     with tab3:
-        st.subheader("☑️ 스타일")
+        st.markdown(f'<h2 style="color: {TITLE_COLOR};">☑️ 스타일</h2>', unsafe_allow_html=True)
         render_comprehensive_chart(STYLE_ETFS, "style")
 
 
@@ -995,7 +996,7 @@ def render_comprehensive_chart(label2t, chart_key):
             st.error(f"데이터 다운로드 실패: {str(e)}")
             return
 
-        st.subheader("📈 Cumulative Returns")
+        st.markdown(f'<h2 style="color: {TITLE_COLOR};">📈 Cumulative Returns</h2>', unsafe_allow_html=True)
         norm = prices_data / prices_data.iloc[0] * 100
         fig = go.Figure()
         colors_list = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
@@ -1022,7 +1023,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
         # ===== 4개 탭: Monthly Returns, Rolling Volatility, Rolling Sharpe, Maximum Drawdown =====
         st.markdown("---")
-        st.subheader("📊 분석 차트")
+        st.markdown(f'<h2 style="color: {TITLE_COLOR};">📊 분석 차트</h2>', unsafe_allow_html=True)
         
         tab_mr, tab_rv, tab_rs, tab_md = st.tabs(
             ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
@@ -1055,7 +1056,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
             # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
             st.markdown("---")
-            st.subheader("📉 Distribution of Monthly Returns")
+            st.markdown(f'<h2 style="color: {TITLE_COLOR};">📉 Distribution of Monthly Returns</h2>', unsafe_allow_html=True)
             
             all_stats = []
             for asset in assets:
@@ -1165,7 +1166,7 @@ def render_comprehensive_chart(label2t, chart_key):
 # Page 2: LLM Analysis
 # ======================================================
 def show_page2():
-    st.title("🤖 LLM 분석 — 뉴스 감성 분석")
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🤖 LLM 분석 — 뉴스 감성 분석</h1>', unsafe_allow_html=True)
     st.caption("Yahoo Finance RSS에서 수집한 최근 3일 뉴스를 FinBERT로 감성 분석합니다.")
 
     col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
@@ -1241,7 +1242,7 @@ def show_page2():
 # Page 3: Analyst & Valuation
 # ======================================================
 def show_page3():
-    st.title("👨‍💼 애널리스트 & 밸류에이션")
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">👨‍💼 애널리스트 & 밸류에이션</h1>', unsafe_allow_html=True)
     st.caption(
         "• 등급 점수: 1=Strong Buy  2=Buy  3=Neutral  4=Sell  5=Strong Sell\n"
         "• 목표주가: 최근 3~6개월 애널리스트 리포트 평균\n"
@@ -1288,14 +1289,14 @@ def show_page3():
     val_df = data['valuation']
     holdings = data['holdings']
 
-    st.subheader(f"📦 {selected} — Top Holdings")
+    st.markdown(f'<h2 style="color: {TITLE_COLOR};">📦 {selected} — Top Holdings</h2>', unsafe_allow_html=True)
     holdings_df = pd.DataFrame(holdings)
     st.dataframe(holdings_df, use_container_width=True,
                  height=min(400, 40 + len(holdings_df) * 35))
 
     st.markdown("---")
 
-    st.subheader("👨‍💼 애널리스트 등급 & 목표주가")
+    st.markdown(f'<h2 style="color: {TITLE_COLOR};">👨‍💼 애널리스트 등급 & 목표주가</h2>', unsafe_allow_html=True)
     analyst_sorted = analyst_df.sort_values('상승여력(%)', ascending=False, na_position='last')
 
     def color_upside(val):
@@ -1362,7 +1363,7 @@ def show_page3():
 
     st.markdown("---")
 
-    st.subheader("🔍 밸류에이션 & EPS")
+    st.markdown(f'<h2 style="color: {TITLE_COLOR};">🔍 밸류에이션 & EPS</h2>', unsafe_allow_html=True)
     val_sorted = val_df.sort_values('EPS 상승률(%)', ascending=False, na_position='last')
     fmt_v = {'Trailing PE': '{:.1f}', 'Forward PE': '{:.1f}',
              'Trailing EPS': '{:.2f}', 'Forward EPS': '{:.2f}', 'EPS 상승률(%)': '{:.2f}%'}
@@ -1428,7 +1429,7 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    st.title("💡 Global Market")
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">💡 Global Market</h1>', unsafe_allow_html=True)
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
