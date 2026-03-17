@@ -744,7 +744,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """RdYlGn 색상 히트맵 적용"""
+    """Wistia 색상 히트맵 적용"""
     styled = df.copy().style
 
     for col in perf_cols:
@@ -761,7 +761,7 @@ def style_perf_table_with_databars(df, perf_cols):
                 
                 styled = styled.background_gradient(
                     subset=[col],
-                    cmap='RdYlGn',
+                    cmap='Wistia',
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
@@ -777,7 +777,7 @@ def style_perf_table_with_databars(df, perf_cols):
 def plot_monthly_returns(prices_df, asset_name):
     monthly = prices_df.resample('M').last()
     returns = monthly.pct_change().dropna() * 100
-    colors = ['#2ecc71' if x > 0 else '#e74c3c' for x in returns.iloc[:, 0]]
+    colors = ['#FFBC00' if x > 0 else '#60584c' for x in returns.iloc[:, 0]]
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=returns.index.strftime('%Y-%m'),
@@ -1028,7 +1028,7 @@ def render_comprehensive_chart(label2t, chart_key):
             ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
         )
 
-        # Tab 1: Monthly Returns
+        # Tab 1: Monthly Returns (Distribution of Monthly Returns 포함)
         with tab_mr:
             st.caption("각 자산의 월별 수익률")
             for i in range(0, len(assets), 2):
@@ -1052,6 +1052,37 @@ def render_comprehensive_chart(label2t, chart_key):
                             st.plotly_chart(fig, use_container_width=True)
                     except Exception as e:
                         cols[1].error(f"{asset2} 실패")
+
+            # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
+            st.markdown("---")
+            st.subheader("📉 Distribution of Monthly Returns")
+            
+            all_stats = []
+            for asset in assets:
+                asset_data = prices_data[[asset]]
+                stats = get_distribution_stats(asset_data, asset)
+                all_stats.append(stats)
+            
+            stats_df = pd.DataFrame(all_stats)
+            styled = stats_df.style
+            numeric_cols = [col for col in stats_df.columns if col != '자산']
+            
+            for col in numeric_cols:
+                numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+                valid_vals = numeric_vals[numeric_vals.notna()]
+                if len(valid_vals) > 0:
+                    vmin = valid_vals.min()
+                    vmax = valid_vals.max()
+                    styled = styled.background_gradient(
+                        subset=[col],
+                        cmap='Wistia',
+                        vmin=vmin,
+                        vmax=vmax,
+                        low=0.3,
+                        high=0.3
+                    )
+            
+            st.dataframe(styled, use_container_width=True, hide_index=True)
 
         # Tab 2: Rolling Volatility
         with tab_rv:
@@ -1105,7 +1136,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
         # Tab 4: Maximum Drawdown - 전체 자산
         with tab_md:
-            st.caption("Maximum Drawdown Analysis - 전체 자산")
+            st.caption("Maximum Drawdown")
             
             for i in range(0, len(assets), 2):
                 cols = st.columns(2)
@@ -1128,37 +1159,6 @@ def render_comprehensive_chart(label2t, chart_key):
                             st.plotly_chart(fig, use_container_width=True)
                     except Exception as e:
                         cols[1].error(f"{asset2} 실패")
-
-        # Distribution of Monthly Returns
-        st.markdown("---")
-        st.subheader("📉 Distribution of Monthly Returns")
-        
-        all_stats = []
-        for asset in assets:
-            asset_data = prices_data[[asset]]
-            stats = get_distribution_stats(asset_data, asset)
-            all_stats.append(stats)
-        
-        stats_df = pd.DataFrame(all_stats)
-        styled = stats_df.style
-        numeric_cols = [col for col in stats_df.columns if col != '자산']
-        
-        for col in numeric_cols:
-            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
-            valid_vals = numeric_vals[numeric_vals.notna()]
-            if len(valid_vals) > 0:
-                vmin = valid_vals.min()
-                vmax = valid_vals.max()
-                styled = styled.background_gradient(
-                    subset=[col],
-                    cmap='RdYlGn',
-                    vmin=vmin,
-                    vmax=vmax,
-                    low=0.3,
-                    high=0.3
-                )
-        
-        st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
 # ======================================================
@@ -1331,7 +1331,7 @@ def show_page3():
     if len(valid_upside) > 0:
         styled_a = styled_a.background_gradient(
             subset=['상승여력(%)'], 
-            cmap='RdYlGn', 
+            cmap='Wistia', 
             vmin=-20, 
             vmax=40, 
             low=0.3, 
@@ -1387,7 +1387,7 @@ def show_page3():
     if len(valid_eps) > 0:
         styled_v = styled_v.background_gradient(
             subset=['EPS 상승률(%)'], 
-            cmap='RdYlGn', 
+            cmap='Wistia', 
             low=0.3, 
             high=0.3
         )
