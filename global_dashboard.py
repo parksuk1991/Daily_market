@@ -537,7 +537,7 @@ def render_news_table(df: pd.DataFrame):
             return ''
 
     styled = (display.style
-              .applymap(color_sent, subset=['Sentiment'])
+              .map(color_sent, subset=['Sentiment'])
               .format({'Sentiment': '{:.2f}'}))
     st.dataframe(
         styled,
@@ -710,7 +710,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """Wistia 색상 scheme 적용"""
+    """Wistia 색상 scheme 적용 - 정확하고 깔끔하게"""
     styled = df.copy().style
 
     for col in perf_cols:
@@ -721,18 +721,18 @@ def style_perf_table_with_databars(df, perf_cols):
             )
             valid_vals = numeric_vals[numeric_vals.notna()]
             
-            if len(valid_vals) > 0 and len(valid_vals) > len(numeric_vals) * 0.3:
+            if len(valid_vals) > 0:
                 vmin = valid_vals.min()
                 vmax = valid_vals.max()
                 
+                # background_gradient에서 na_rep 제거
                 styled = styled.background_gradient(
                     subset=[col],
                     cmap='Wistia',
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
-                    high=0.3,
-                    na_rep='white'
+                    high=0.3
                 )
 
     return styled
@@ -1032,7 +1032,7 @@ def render_comprehensive_chart(label2t, chart_key):
             if isinstance(prices_data, pd.Series):
                 prices_data = prices_data.to_frame()
 
-            # 컬럼을 label로 올바르게 매칭 (매우 중요!)
+            # 컬럼을 label로 올바르게 매칭
             rename_dict = {}
             for label, ticker in label2t.items():
                 if ticker in prices_data.columns:
@@ -1070,7 +1070,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
         assets = list(prices_data.columns)
 
-        # ===== Horizon Charts (공간 효율적) =====
+        # ===== Horizon Charts =====
         st.markdown("---")
         st.subheader("⚡ Horizon Charts - 공간 효율적 분석")
         
@@ -1125,7 +1125,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 except Exception as e:
                     st.error(f"{asset} 계산 실패")
         
-        # ===== Distribution Statistics (Wistia 색상) =====
+        # ===== Distribution Statistics =====
         st.markdown("---")
         st.subheader("📉 Distribution of Monthly Returns")
         
@@ -1152,8 +1152,7 @@ def render_comprehensive_chart(label2t, chart_key):
                     vmin=vmin,
                     vmax=vmax,
                     low=0.3,
-                    high=0.3,
-                    na_rep='white'
+                    high=0.3
                 )
         
         st.dataframe(styled, use_container_width=True, hide_index=True)
@@ -1321,8 +1320,8 @@ def show_page3():
     fmt = {'등급 점수': '{:.2f}', '목표주가': '{:,.2f}', '현재가': '{:,.2f}', '상승여력(%)': '{:.2f}%'}
     styled_a = (analyst_sorted.style
                 .format(fmt, na_rep='N/A')
-                .applymap(color_upside, subset=['상승여력(%)'])
-                .applymap(color_rating, subset=['등급 점수']))
+                .map(color_upside, subset=['상승여력(%)'])
+                .map(color_rating, subset=['등급 점수']))
     
     upside_vals = pd.to_numeric(analyst_sorted['상승여력(%)'], errors='coerce')
     valid_upside = upside_vals[upside_vals.notna()]
@@ -1333,8 +1332,7 @@ def show_page3():
             vmin=-20, 
             vmax=40, 
             low=0.3, 
-            high=0.3,
-            na_rep='white'
+            high=0.3
         )
     
     st.dataframe(styled_a, use_container_width=True,
@@ -1379,7 +1377,7 @@ def show_page3():
 
     styled_v = (val_sorted.style
                 .format(fmt_v, na_rep='N/A')
-                .applymap(color_eps, subset=['EPS 상승률(%)']))
+                .map(color_eps, subset=['EPS 상승률(%)']))
     
     eps_vals = pd.to_numeric(val_sorted['EPS 상승률(%)'], errors='coerce')
     valid_eps = eps_vals[eps_vals.notna()]
@@ -1388,8 +1386,7 @@ def show_page3():
             subset=['EPS 상승률(%)'], 
             cmap='Wistia', 
             low=0.3, 
-            high=0.3,
-            na_rep='white'
+            high=0.3
         )
     
     st.dataframe(styled_v, use_container_width=True,
