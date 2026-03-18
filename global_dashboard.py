@@ -26,7 +26,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(page_title="Global Market Monitoring", page_icon="🌐", layout="wide")
 
-# ===== 자산 정의 ===== 이건 테스트용이고 추후에 실제 펀드 보유 자산으로 동적으로 변경 필요 
+# ===== 자산 정의 =====
 STOCK_ETFS = {
     'S&P 500 (SPY)': 'SPY', 'NASDAQ 100 (QQQ)': 'QQQ', '전세계 (ACWI)': 'ACWI',
     '선진국 (VEA)': 'VEA', '신흥국 (VWO)': 'VWO', '유럽(Europe, VGK)': 'VGK',
@@ -960,218 +960,273 @@ def show_page1():
 
 
 def render_comprehensive_chart(label2t, chart_key):
-    if f"{chart_key}_period" not in st.session_state:
-        st.session_state[f"{chart_key}_period"] = "3년"
+    """기본 기간 선택 또는 사용자 정의 기간 선택을 통한 분석"""
+    
+    # 기본 기간 또는 사용자 정의 기간 선택 탭
+    mode_tab1, mode_tab2 = st.tabs(["📅 기본 기간", "🔧 사용자 정의 기간"])
+    
+    # ===== 탭 1: 기본 기간 선택 =====
+    with mode_tab1:
+        if f"{chart_key}_period" not in st.session_state:
+            st.session_state[f"{chart_key}_period"] = "3년"
 
-    period_options = [p[0] for p in PERIOD_OPTIONS]
-    current_idx = period_options.index(st.session_state[f"{chart_key}_period"])
+        period_options = [p[0] for p in PERIOD_OPTIONS]
+        current_idx = period_options.index(st.session_state[f"{chart_key}_period"])
 
-    selected_period = st.selectbox(
-        "기간 선택",
-        options=period_options,
-        index=current_idx,
-        key=f"{chart_key}_select"
-    )
+        selected_period = st.selectbox(
+            "기간 선택",
+            options=period_options,
+            index=current_idx,
+            key=f"{chart_key}_select"
+        )
 
-    if selected_period != st.session_state[f"{chart_key}_period"]:
-        st.session_state[f"{chart_key}_period"] = selected_period
-        st.rerun()
+        if selected_period != st.session_state[f"{chart_key}_period"]:
+            st.session_state[f"{chart_key}_period"] = selected_period
+            st.rerun()
 
-    months = next(m for n, m in PERIOD_OPTIONS if n == selected_period)
+        months = next(m for n, m in PERIOD_OPTIONS if n == selected_period)
 
-    with st.spinner("데이터 분석 중..."):
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=months * 31)
-
-        try:
-            tickers = list(label2t.values())
-            prices_raw = yf.download(tickers, start=start_date, end=end_date, progress=False)
-
-            if isinstance(prices_raw, pd.DataFrame):
-                prices_data = prices_raw['Close']
-            else:
-                prices_data = prices_raw.to_frame()
-
-            if isinstance(prices_data, pd.Series):
-                prices_data = prices_data.to_frame()
-
-            rename_dict = {}
-            for label, ticker in label2t.items():
-                if ticker in prices_data.columns:
-                    rename_dict[ticker] = label
+        with st.spinner("데이터 분석 중..."):
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=months * 31)
             
-            prices_data = prices_data.rename(columns=rename_dict)
-            prices_data = prices_data.ffill().dropna()
+            display_chart_analysis(label2t, start_date, end_date, f"기본 기간 - {selected_period}")
+    
+    # ===== 탭 2: 사용자 정의 기간 선택 =====
+    with mode_tab2:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            start_date_custom = st.date_input(
+                "시작일",
+                value=datetime.now() - timedelta(days=365),
+                key=f"{chart_key}_start_date"
+            )
+        
+        with col2:
+            end_date_custom = st.date_input(
+                "종료일",
+                value=datetime.now(),
+                key=f"{chart_key}_end_date"
+            )
+        
+        # 날짜 검증
+        if start_date_custom >= end_date_custom:
+            st.error("❌ 시작일이 종료일보다 이전이어야 합니다.")
+            return
+        
+        days_diff = (end_date_custom - start_date_custom).days
+        if days_diff < 5:
+            st.error("❌ 최소 5일 이상의 기간을 선택해주세요.")
+            return
+        
+        # 기간 정보 표시
+        st.info(f"📊 분석 기간: {start_date_custom} ~ {end_date_custom} ({days_diff}일)")
+        
+        if st.button("📈 분석 시작", key=f"{chart_key}_analyze_btn", type="primary"):
+            with st.spinner("데이터 분석 중..."):
+                display_chart_analysis(label2t, start_date_custom, end_date_custom, 
+                                     f"사용자 정의 기간 - {start_date_custom} ~ {end_date_custom}")
 
-        except Exception as e:
-            st.error(f"데이터 다운로드 실패: {str(e)}")
+
+def display_chart_analysis(label2t, start_date, end_date, period_label):
+    """기간 데이터에 대한 분석 차트 표시"""
+    
+    try:
+        tickers = list(label2t.values())
+        prices_raw = yf.download(tickers, start=start_date, end=end_date, progress=False)
+
+        if isinstance(prices_raw, pd.DataFrame):
+            prices_data = prices_raw['Close']
+        else:
+            prices_data = prices_raw.to_frame()
+
+        if isinstance(prices_data, pd.Series):
+            prices_data = prices_data.to_frame()
+
+        # 컬럼명 변환
+        rename_dict = {}
+        for label, ticker in label2t.items():
+            if ticker in prices_data.columns:
+                rename_dict[ticker] = label
+        
+        prices_data = prices_data.rename(columns=rename_dict)
+        prices_data = prices_data.ffill().dropna()
+        
+        if prices_data.empty or len(prices_data) < 5:
+            st.error("❌ 해당 기간에 충분한 데이터가 없습니다.")
             return
 
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">📈 Cumulative Returns</h2>', unsafe_allow_html=True)
-        norm = prices_data / prices_data.iloc[0] * 100
-        fig = go.Figure()
-        colors_list = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
-                      '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#aec7e8', '#ffbb78']
-        for i, col in enumerate(norm.columns):
-            fig.add_trace(go.Scatter(
-                x=norm.index,
-                y=norm[col],
-                mode='lines',
-                name=col,
-                line=dict(color=colors_list[i % len(colors_list)], width=2.5),
-            ))
-        fig.update_layout(
-            yaxis_title="누적 성과",
-            template="plotly_white",
-            height=420,
-            legend=dict(orientation='h', y=1.15, x=0),
-            hovermode='x unified',
-            margin=dict(b=80)
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"❌ 데이터 다운로드 실패: {str(e)}")
+        return
 
-        assets = list(prices_data.columns)
+    # ===== Cumulative Returns 차트 =====
+    st.markdown(f'<h3 style="color: {TITLE_COLOR};">📈 누적 수익률 ({period_label})</h3>', unsafe_allow_html=True)
+    norm = prices_data / prices_data.iloc[0] * 100
+    fig = go.Figure()
+    colors_list = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+                  '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#aec7e8', '#ffbb78']
+    for i, col in enumerate(norm.columns):
+        fig.add_trace(go.Scatter(
+            x=norm.index,
+            y=norm[col],
+            mode='lines',
+            name=col,
+            line=dict(color=colors_list[i % len(colors_list)], width=2.5),
+        ))
+    fig.update_layout(
+        yaxis_title="누적 성과 (%)",
+        template="plotly_white",
+        height=420,
+        legend=dict(orientation='h', y=1.15, x=0),
+        hovermode='x unified',
+        margin=dict(b=80)
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-        # ===== 4개 탭: Monthly Returns, Rolling Volatility, Rolling Sharpe, Maximum Drawdown =====
+    assets = list(prices_data.columns)
+
+    # ===== 4개 탭: Monthly Returns, Rolling Volatility, Rolling Sharpe, Maximum Drawdown =====
+    st.markdown("---")
+    st.markdown(f'<h3 style="color: {TITLE_COLOR};">📊 분석 차트</h3>', unsafe_allow_html=True)
+    
+    tab_mr, tab_rv, tab_rs, tab_md = st.tabs(
+        ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
+    )
+
+    # Tab 1: Monthly Returns (+Distribution of Monthly Returns)
+    with tab_mr:
+        st.caption("각 자산의 월별 수익률")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
+
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_monthly_returns(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패: {str(e)}")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
+                try:
+                    with cols[1]:
+                        fig = plot_monthly_returns(asset2_data, asset2)
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    cols[1].error(f"{asset2} 실패: {str(e)}")
+
+        # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
         st.markdown("---")
-        st.markdown(f'<h2 style="color: {TITLE_COLOR};">📊 분석 차트</h2>', unsafe_allow_html=True)
+        st.markdown(f'<h3 style="color: {TITLE_COLOR};">📉 Distribution of Monthly Returns</h3>', unsafe_allow_html=True)
         
-        tab_mr, tab_rv, tab_rs, tab_md = st.tabs(
-            ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
-        )
+        all_stats = []
+        for asset in assets:
+            asset_data = prices_data[[asset]]
+            stats = get_distribution_stats(asset_data, asset)
+            all_stats.append(stats)
+        
+        stats_df = pd.DataFrame(all_stats)
+        styled = stats_df.style
+        numeric_cols = [col for col in stats_df.columns if col != '자산']
+        transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
+        
+        for col in numeric_cols:
+            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+            valid_vals = numeric_vals[numeric_vals.notna()]
+            if len(valid_vals) > 0:
+                vmin = valid_vals.min()
+                vmax = valid_vals.max()
+                styled = styled.background_gradient(
+                    subset=[col],
+                    cmap=transparent_YlOrBr,
+                    vmin=vmin,
+                    vmax=vmax,
+                    low=0.3,
+                    high=0.3
+                )
+        
+        st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        # Tab 1: Monthly Returns (+Distribution of Monthly Returns)
-        with tab_mr:
-            st.caption("각 자산의 월별 수익률")
-            for i in range(0, len(assets), 2):
-                cols = st.columns(2)
+    # Tab 2: Rolling Volatility
+    with tab_rv:
+        st.caption("6개월 Rolling 변동성")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
 
-                asset1 = assets[i]
-                asset1_data = prices_data[[asset1]]
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_rolling_volatility_visual(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
+
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
                 try:
-                    with cols[0]:
-                        fig = plot_monthly_returns(asset1_data, asset1)
+                    with cols[1]:
+                        fig = plot_rolling_volatility_visual(asset2_data, asset2)
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
-                    cols[0].error(f"{asset1} 실패")
+                    cols[1].error(f"{asset2} 실패")
 
-                if i + 1 < len(assets):
-                    asset2 = assets[i + 1]
-                    asset2_data = prices_data[[asset2]]
-                    try:
-                        with cols[1]:
-                            fig = plot_monthly_returns(asset2_data, asset2)
-                            st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        cols[1].error(f"{asset2} 실패")
+    # Tab 3: Rolling Sharpe
+    with tab_rs:
+        st.caption("6개월 Rolling Sharpe Ratio")
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
 
-            # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
-            st.markdown("---")
-            st.markdown(f'<h2 style="color: {TITLE_COLOR};">📉 Distribution of Monthly Returns</h2>', unsafe_allow_html=True)
-            
-            all_stats = []
-            for asset in assets:
-                asset_data = prices_data[[asset]]
-                stats = get_distribution_stats(asset_data, asset)
-                all_stats.append(stats)
-            
-            stats_df = pd.DataFrame(all_stats)
-            styled = stats_df.style
-            numeric_cols = [col for col in stats_df.columns if col != '자산']
-            transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
-            
-            for col in numeric_cols:
-                numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
-                valid_vals = numeric_vals[numeric_vals.notna()]
-                if len(valid_vals) > 0:
-                    vmin = valid_vals.min()
-                    vmax = valid_vals.max()
-                    styled = styled.background_gradient(
-                        subset=[col],
-                        cmap=transparent_YlOrBr,
-                        vmin=vmin,
-                        vmax=vmax,
-                        low=0.3,
-                        high=0.3
-                    )
-            
-            st.dataframe(styled, use_container_width=True, hide_index=True)
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_rolling_sharpe(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
 
-        # Tab 2: Rolling Volatility
-        with tab_rv:
-            st.caption("6개월 Rolling 변동성")
-            for i in range(0, len(assets), 2):
-                cols = st.columns(2)
-
-                asset1 = assets[i]
-                asset1_data = prices_data[[asset1]]
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
                 try:
-                    with cols[0]:
-                        fig = plot_rolling_volatility_visual(asset1_data, asset1)
+                    with cols[1]:
+                        fig = plot_rolling_sharpe(asset2_data, asset2)
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
-                    cols[0].error(f"{asset1} 실패")
+                    cols[1].error(f"{asset2} 실패")
 
-                if i + 1 < len(assets):
-                    asset2 = assets[i + 1]
-                    asset2_data = prices_data[[asset2]]
-                    try:
-                        with cols[1]:
-                            fig = plot_rolling_volatility_visual(asset2_data, asset2)
-                            st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        cols[1].error(f"{asset2} 실패")
+    # Tab 4: Maximum Drawdown
+    with tab_md:
+        st.caption("Maximum Drawdown")
+        
+        for i in range(0, len(assets), 2):
+            cols = st.columns(2)
 
-        # Tab 3: Rolling Sharpe
-        with tab_rs:
-            st.caption("6개월 Rolling Sharpe Ratio")
-            for i in range(0, len(assets), 2):
-                cols = st.columns(2)
+            asset1 = assets[i]
+            asset1_data = prices_data[[asset1]]
+            try:
+                with cols[0]:
+                    fig = plot_maximum_drawdown(asset1_data, asset1)
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                cols[0].error(f"{asset1} 실패")
 
-                asset1 = assets[i]
-                asset1_data = prices_data[[asset1]]
+            if i + 1 < len(assets):
+                asset2 = assets[i + 1]
+                asset2_data = prices_data[[asset2]]
                 try:
-                    with cols[0]:
-                        fig = plot_rolling_sharpe(asset1_data, asset1)
+                    with cols[1]:
+                        fig = plot_maximum_drawdown(asset2_data, asset2)
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
-                    cols[0].error(f"{asset1} 실패")
-
-                if i + 1 < len(assets):
-                    asset2 = assets[i + 1]
-                    asset2_data = prices_data[[asset2]]
-                    try:
-                        with cols[1]:
-                            fig = plot_rolling_sharpe(asset2_data, asset2)
-                            st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        cols[1].error(f"{asset2} 실패")
-
-        # Tab 4: Maximum Drawdown
-        with tab_md:
-            st.caption("Maximum Drawdown")
-            
-            for i in range(0, len(assets), 2):
-                cols = st.columns(2)
-
-                asset1 = assets[i]
-                asset1_data = prices_data[[asset1]]
-                try:
-                    with cols[0]:
-                        fig = plot_maximum_drawdown(asset1_data, asset1)
-                        st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    cols[0].error(f"{asset1} 실패")
-
-                if i + 1 < len(assets):
-                    asset2 = assets[i + 1]
-                    asset2_data = prices_data[[asset2]]
-                    try:
-                        with cols[1]:
-                            fig = plot_maximum_drawdown(asset2_data, asset2)
-                            st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        cols[1].error(f"{asset2} 실패")
+                    cols[1].error(f"{asset2} 실패")
 
 
 # ======================================================
