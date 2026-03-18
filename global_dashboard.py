@@ -944,7 +944,7 @@ def show_page1():
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs(["📊 국가", "📗 섹터", "📙 스타일"])
+    tab1, tab2, tab3 = st.tabs(["📊 국가 성과", "📗 섹터 성과", "📙 스타일 성과"])
 
     with tab1:
         st.markdown(f'<h2 style="color: {TITLE_COLOR};">✅ 국가</h2>', unsafe_allow_html=True)
@@ -960,10 +960,9 @@ def show_page1():
 
 
 def render_comprehensive_chart(label2t, chart_key):
-    """기본 기간 선택 또는 사용자 정의 기간 선택을 통한 분석"""
     
     # 기본 기간 또는 사용자 정의 기간 선택 탭
-    mode_tab1, mode_tab2 = st.tabs(["📅 기본 기간", "🔧 사용자 정의 기간"])
+    mode_tab1, mode_tab2 = st.tabs(["📅 기본 기간 설정", "🔧 사용자 정의 기간 설정"])
     
     # ===== 탭 1: 기본 기간 선택 =====
     with mode_tab1:
@@ -1076,7 +1075,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
             line=dict(color=colors_list[i % len(colors_list)], width=2.5),
         ))
     fig.update_layout(
-        yaxis_title="누적 성과 (%)",
+        yaxis_title="누적 성과",
         template="plotly_white",
         height=420,
         legend=dict(orientation='h', y=1.15, x=0),
