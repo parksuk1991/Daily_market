@@ -1512,19 +1512,30 @@ with st.sidebar:
     st.caption(f"Last visit: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.divider()
     st.caption("© 2026 KB Asset Management.")
-    with st.expander("📄 MIT License Details"):
-        st.markdown("""
-        **MIT License**
 
-        Copyright (c) 2026 **KB Asset Management**
 
-        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files...
 
-        ---
-        *The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.*
 
-        `THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED...`
-        """, help="Click to see the full license text.")
+    with st.sidebar.expander("📄 MIT License Details"):
+
+        license_html = """
+        <div style="font-size: 0.8rem; color: #808080; line-height: 1.5;">
+            MIT License<br>
+            Copyright (c) 2026 KB Asset Management<br><br>
+            Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
+            associated documentation files...<br><br>
+            The above copyright notice and this permission notice shall be included in all copies or 
+            substantial portions of the Software.<br><br>
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED...<br><br>
+            <a href="https://opensource.org/license/mit" target="_blank" style="color: #606060; text-decoration: underline;">
+                View Full License Page
+            </a>
+        </div>
+        """
+        st.markdown(license_html, unsafe_allow_html=True)
+
+    
+
 
 
 if page == "📊 시장 성과":
