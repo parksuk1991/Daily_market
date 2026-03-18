@@ -1233,7 +1233,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
 # ======================================================
 def show_page2():
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">🤖 LLM 분석 — 뉴스 감성 분석</h1>', unsafe_allow_html=True)
-    st.caption("Yahoo Finance RSS에서 수집한 최근 3일 뉴스를 FinBERT로 감성 분석합니다.")
+    st.caption("Yahoo Finance RSS에서 수집한 최근 3일 뉴스를 FinBERT(Financial Bidirectional Encoder Representations from Transformers)로 감성 분석합니다.")
 
     col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
     with col1:
