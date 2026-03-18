@@ -1121,7 +1121,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
 
         # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
         st.markdown("---")
-        st.markdown(f'<h3 style="color: {TITLE_COLOR};">📉 Distribution of Monthly Returns</h3>', unsafe_allow_html=True)
+        st.markdown(f'<h3 style="color: {TITLE_COLOR};">📉 월별 수익률 통계</h3>', unsafe_allow_html=True)
         
         all_stats = []
         for asset in assets:
