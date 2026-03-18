@@ -352,7 +352,7 @@ class FinBERTAnalyzer:
 
     def categorize(self, title: str) -> str:
         t = title.lower()
-        if any(w in t for w in ['earnings', 'revenue', 'profit']):
+        if any(w in t for w in ['earnings', 'revenue', 'profit', 'guidance']):
             return 'Earnings'
         if any(w in t for w in ['merger', 'acquisition', 'deal']):
             return 'M&A'
