@@ -558,41 +558,58 @@ def render_news_table(df: pd.DataFrame):
 
 
 # ======================================================
-# Analyst & Valuation Functions
+# Analyst & Valuation Functions (개선 버전)
 # ======================================================
-@st.cache_data(ttl=3600)
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
+    """개선된 애널리스트 데이터 수집"""
     rows = []
     for sym in ticker_syms:
         try:
-            ticker_obj = yf.Ticker(sym)
-            info = ticker_obj.info or {}
-            
-            current_px = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('bid')
-            target_px = info.get('targetMeanPrice')
-            rec_mean = info.get('recommendationMean')
-            rec_key = info.get('recommendationKey', 'none')
-            
-            upside = None
-            if target_px and current_px and float(current_px) != 0:
+            # 재시도 로직 추가
+            for attempt in range(2):
                 try:
-                    upside = ((float(target_px) / float(current_px)) - 1) * 100
-                except:
-                    pass
-            
-            short_name = info.get('shortName') or info.get('longName') or info.get('symbol', '')
-            
-            rows.append({
-                'Ticker': sym,
-                '종목명': short_name,
-                '등급 점수': rec_mean,
-                '등급': rec_key.capitalize() if rec_key and rec_key != 'none' else 'N/A',
-                '목표주가': target_px,
-                '현재가': current_px,
-                '상승여력(%)': upside,
-            })
-            time.sleep(0.1)
-        except Exception as e:
+                    ticker_obj = yf.Ticker(sym)
+                    info = ticker_obj.info or {}
+                    
+                    current_px = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('bid')
+                    target_px = info.get('targetMeanPrice')
+                    rec_mean = info.get('recommendationMean')
+                    rec_key = info.get('recommendationKey', 'none')
+                    
+                    upside = None
+                    if target_px and current_px and float(current_px or 0) != 0:
+                        try:
+                            upside = ((float(target_px) / float(current_px)) - 1) * 100
+                        except (ValueError, ZeroDivisionError):
+                            pass
+                    
+                    short_name = info.get('shortName') or info.get('longName') or sym
+                    
+                    rows.append({
+                        'Ticker': sym,
+                        '종목명': short_name,
+                        '등급 점수': rec_mean,
+                        '등급': rec_key.capitalize() if rec_key and rec_key != 'none' else 'N/A',
+                        '목표주가': target_px,
+                        '현재가': current_px,
+                        '상승여력(%)': upside,
+                    })
+                    break
+                except Exception as e:
+                    if attempt < 1:
+                        time.sleep(1)
+                    else:
+                        rows.append({
+                            'Ticker': sym,
+                            '종목명': 'N/A',
+                            '등급 점수': None,
+                            '등급': 'N/A',
+                            '목표주가': None,
+                            '현재가': None,
+                            '상승여력(%)': None,
+                        })
+            time.sleep(0.2)
+        except Exception:
             rows.append({
                 'Ticker': sym,
                 '종목명': 'N/A',
@@ -607,39 +624,55 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
     return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상승여력(%)']]
 
 
-@st.cache_data(ttl=3600)
 def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
+    """개선된 밸류에이션 데이터 수집"""
     rows = []
     for sym in ticker_syms:
         try:
-            ticker_obj = yf.Ticker(sym)
-            info = ticker_obj.info or {}
-            
-            trailing_pe = info.get('trailingPE')
-            forward_pe = info.get('forwardPE')
-            t_eps = info.get('trailingEps') or info.get('trailingEPS')
-            f_eps = info.get('forwardEps') or info.get('forwardEPS')
-            
-            eps_growth = None
-            if t_eps and f_eps and float(t_eps) != 0:
+            for attempt in range(2):
                 try:
-                    eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
-                except:
-                    pass
-            
-            short_name = info.get('shortName') or info.get('longName') or info.get('symbol', '')
-            
-            rows.append({
-                'Ticker': sym,
-                '종목명': short_name,
-                'Trailing PE': trailing_pe,
-                'Forward PE': forward_pe,
-                'Trailing EPS': t_eps,
-                'Forward EPS': f_eps,
-                'EPS 상승률(%)': eps_growth,
-            })
-            time.sleep(0.1)
-        except Exception as e:
+                    ticker_obj = yf.Ticker(sym)
+                    info = ticker_obj.info or {}
+                    
+                    trailing_pe = info.get('trailingPE')
+                    forward_pe = info.get('forwardPE')
+                    t_eps = info.get('trailingEps') or info.get('trailingEPS')
+                    f_eps = info.get('forwardEps') or info.get('forwardEPS')
+                    
+                    eps_growth = None
+                    if t_eps and f_eps and float(t_eps or 0) != 0:
+                        try:
+                            eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
+                        except (ValueError, ZeroDivisionError):
+                            pass
+                    
+                    short_name = info.get('shortName') or info.get('longName') or sym
+                    
+                    rows.append({
+                        'Ticker': sym,
+                        '종목명': short_name,
+                        'Trailing PE': trailing_pe,
+                        'Forward PE': forward_pe,
+                        'Trailing EPS': t_eps,
+                        'Forward EPS': f_eps,
+                        'EPS 상승률(%)': eps_growth,
+                    })
+                    break
+                except Exception as e:
+                    if attempt < 1:
+                        time.sleep(1)
+                    else:
+                        rows.append({
+                            'Ticker': sym,
+                            '종목명': 'N/A',
+                            'Trailing PE': None,
+                            'Forward PE': None,
+                            'Trailing EPS': None,
+                            'Forward EPS': None,
+                            'EPS 상승률(%)': None,
+                        })
+            time.sleep(0.2)
+        except Exception:
             rows.append({
                 'Ticker': sym,
                 '종목명': 'N/A',
@@ -667,6 +700,7 @@ def format_number(val, decimals=2):
 
 
 def get_perf_table_improved(label2ticker, ref_date=None):
+    """개선된 성과 테이블 - 인덱스 타입 확인 및 수정"""
     tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
@@ -682,7 +716,12 @@ def get_perf_table_improved(label2ticker, ref_date=None):
         if isinstance(df, pd.Series):
             df = df.to_frame()
         df = df.ffill().dropna(how='all')[tickers]
-    except:
+        
+        # 인덱스 타입 확인 및 timezone 제거
+        if hasattr(df.index, 'tz') and df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+    except Exception as e:
+        st.error(f"데이터 다운로드 실패: {str(e)}")
         return pd.DataFrame()
 
     if df.empty:
@@ -784,127 +823,172 @@ def style_perf_table_with_databars(df, perf_cols):
 
 
 # ======================================================
-# Chart Functions for Page 1
+# Chart Functions for Page 1 (개선 버전)
 # ======================================================
 def plot_monthly_returns(prices_df, asset_name):
-    monthly = prices_df.resample('M').last()
-    returns = monthly.pct_change().dropna() * 100
-    colors = ['#FFBC00' if x > 0 else '#60584c' for x in returns.iloc[:, 0]]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=returns.index.strftime('%Y-%m'),
-        y=returns.iloc[:, 0],
-        marker_color=colors,
-        text=[f"{v:.2f}%" for v in returns.iloc[:, 0]],
-        textposition='outside',
-    ))
-    fig.update_layout(
-        title=f'{asset_name}',
-        xaxis_title='Month',
-        yaxis_title='Return (%)',
-        template='plotly_white',
-        height=320,
-        showlegend=False,
-        margin=dict(t=30, b=20, l=30, r=20),
-    )
-    return fig
+    """월별 수익률 차트"""
+    try:
+        # 인덱스 timezone 제거
+        if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
+            prices_df = prices_df.copy()
+            prices_df.index = prices_df.index.tz_localize(None)
+        
+        monthly = prices_df.resample('ME').last()
+        returns = monthly.pct_change().dropna() * 100
+        colors = ['#FFBC00' if x > 0 else '#60584c' for x in returns.iloc[:, 0]]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=returns.index.strftime('%Y-%m'),
+            y=returns.iloc[:, 0],
+            marker_color=colors,
+            text=[f"{v:.2f}%" for v in returns.iloc[:, 0]],
+            textposition='outside',
+        ))
+        fig.update_layout(
+            title=f'{asset_name}',
+            xaxis_title='Month',
+            yaxis_title='Return (%)',
+            template='plotly_white',
+            height=320,
+            showlegend=False,
+            margin=dict(t=30, b=20, l=30, r=20),
+        )
+        return fig
+    except Exception as e:
+        st.error(f"월별 수익률 차트 오류: {str(e)}")
+        return go.Figure()
 
 
 def get_distribution_stats(prices_df, asset_name):
-    monthly = prices_df.resample('M').last()
-    returns = monthly.pct_change().dropna() * 100
-    returns_flat = returns.iloc[:, 0].values
+    """분포 통계 계산"""
+    try:
+        # 인덱스 timezone 제거
+        if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
+            prices_df = prices_df.copy()
+            prices_df.index = prices_df.index.tz_localize(None)
+        
+        monthly = prices_df.resample('ME').last()
+        returns = monthly.pct_change().dropna() * 100
+        returns_flat = returns.iloc[:, 0].values
 
-    stats = {
-        '자산': asset_name,
-        '평균(%)': format_number(np.mean(returns_flat), 2),
-        '표준편차(%)': format_number(np.std(returns_flat), 2),
-        '최소(%)': format_number(np.min(returns_flat), 2),
-        '25분위(%)': format_number(np.percentile(returns_flat, 25), 2),
-        '중앙값(%)': format_number(np.median(returns_flat), 2),
-        '75분위(%)': format_number(np.percentile(returns_flat, 75), 2),
-        '최대(%)': format_number(np.max(returns_flat), 2),
-    }
-    return stats
+        stats = {
+            '자산': asset_name,
+            '평균(%)': format_number(np.mean(returns_flat), 2),
+            '표준편차(%)': format_number(np.std(returns_flat), 2),
+            '최소(%)': format_number(np.min(returns_flat), 2),
+            '25분위(%)': format_number(np.percentile(returns_flat, 25), 2),
+            '중앙값(%)': format_number(np.median(returns_flat), 2),
+            '75분위(%)': format_number(np.percentile(returns_flat, 75), 2),
+            '최대(%)': format_number(np.max(returns_flat), 2),
+        }
+        return stats
+    except Exception as e:
+        return {}
 
 
 def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
-    returns = prices_df.pct_change().dropna()
-    rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=rolling_vol.index,
-        y=rolling_vol.values,
-        mode='lines',
-        line=dict(color='#3498db', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(52, 152, 219, 0.2)',
-    ))
-    fig.update_layout(
-        title=f'{asset_name}',
-        xaxis_title='Date',
-        yaxis_title='Volatility (%)',
-        template='plotly_white',
-        height=320,
-        margin=dict(t=30, b=20, l=30, r=20),
-    )
-    return fig
+    """롤링 변동성 차트"""
+    try:
+        if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
+            prices_df = prices_df.copy()
+            prices_df.index = prices_df.index.tz_localize(None)
+        
+        returns = prices_df.pct_change().dropna()
+        rolling_vol = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252) * 100
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=rolling_vol.index,
+            y=rolling_vol.values,
+            mode='lines',
+            line=dict(color='#3498db', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(52, 152, 219, 0.2)',
+        ))
+        fig.update_layout(
+            title=f'{asset_name}',
+            xaxis_title='Date',
+            yaxis_title='Volatility (%)',
+            template='plotly_white',
+            height=320,
+            margin=dict(t=30, b=20, l=30, r=20),
+        )
+        return fig
+    except Exception as e:
+        st.error(f"변동성 차트 오류")
+        return go.Figure()
 
 
 def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
-    returns = prices_df.pct_change().dropna()
-    rolling_mean = returns.iloc[:, 0].rolling(window).mean() * 252
-    rolling_std = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252)
-    rolling_sharpe = (rolling_mean - risk_free_rate) / rolling_std
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=rolling_sharpe.index,
-        y=rolling_sharpe.values,
-        mode='lines',
-        line=dict(color='#f39c12', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(243, 156, 18, 0.2)',
-    ))
-    fig.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.5)
-    fig.update_layout(
-        title=f'{asset_name}',
-        xaxis_title='Date',
-        yaxis_title='Sharpe Ratio',
-        template='plotly_white',
-        height=320,
-        margin=dict(t=30, b=20, l=30, r=20),
-    )
-    return fig
+    """롤링 샤프 비율 차트"""
+    try:
+        if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
+            prices_df = prices_df.copy()
+            prices_df.index = prices_df.index.tz_localize(None)
+        
+        returns = prices_df.pct_change().dropna()
+        rolling_mean = returns.iloc[:, 0].rolling(window).mean() * 252
+        rolling_std = returns.iloc[:, 0].rolling(window).std() * np.sqrt(252)
+        rolling_sharpe = (rolling_mean - risk_free_rate) / rolling_std
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=rolling_sharpe.index,
+            y=rolling_sharpe.values,
+            mode='lines',
+            line=dict(color='#f39c12', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(243, 156, 18, 0.2)',
+        ))
+        fig.add_hline(y=0, line_dash='dash', line_color='gray', opacity=0.5)
+        fig.update_layout(
+            title=f'{asset_name}',
+            xaxis_title='Date',
+            yaxis_title='Sharpe Ratio',
+            template='plotly_white',
+            height=320,
+            margin=dict(t=30, b=20, l=30, r=20),
+        )
+        return fig
+    except Exception as e:
+        st.error(f"샤프 비율 차트 오류")
+        return go.Figure()
 
 
 def plot_maximum_drawdown(prices_df, asset_name):
-    """Maximum Drawdown 계산 및 표시"""
-    cumulative_return = (1 + prices_df.iloc[:, 0].pct_change()).cumprod()
-    running_max = cumulative_return.expanding().max()
-    drawdown = (cumulative_return - running_max) / running_max * 100
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=drawdown.index,
-        y=drawdown.values,
-        mode='lines',
-        line=dict(color='#e74c3c', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(231, 76, 60, 0.2)',
-        name='Drawdown'
-    ))
-    
-    fig.update_layout(
-        title=f'{asset_name}',
-        xaxis_title='Date',
-        yaxis_title='Drawdown (%)',
-        template='plotly_white',
-        height=320,
-        hovermode='x unified',
-        margin=dict(t=30, b=20, l=30, r=20),
-    )
-    
-    return fig
+    """최대 낙폭 차트"""
+    try:
+        if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
+            prices_df = prices_df.copy()
+            prices_df.index = prices_df.index.tz_localize(None)
+        
+        cumulative_return = (1 + prices_df.iloc[:, 0].pct_change()).cumprod()
+        running_max = cumulative_return.expanding().max()
+        drawdown = (cumulative_return - running_max) / running_max * 100
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=drawdown.index,
+            y=drawdown.values,
+            mode='lines',
+            line=dict(color='#e74c3c', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(231, 76, 60, 0.2)',
+            name='Drawdown'
+        ))
+        
+        fig.update_layout(
+            title=f'{asset_name}',
+            xaxis_title='Date',
+            yaxis_title='Drawdown (%)',
+            template='plotly_white',
+            height=320,
+            hovermode='x unified',
+            margin=dict(t=30, b=20, l=30, r=20),
+        )
+        
+        return fig
+    except Exception as e:
+        st.error(f"낙폭 차트 오류")
+        return go.Figure()
 
 
 # ======================================================
@@ -916,7 +1000,7 @@ def show_page1():
 
     if update_clicked:
         st.session_state['p1_updated'] = True
-        st.markdown("*추후 펀드내 실제 보유 자산들로 구성하여 개발 필요")
+        st.rerun()
 
     if not st.session_state.get('p1_updated', False):
         st.info("🔄 Update 버튼을 눌러 데이터를 불러오세요.")
@@ -981,7 +1065,6 @@ def render_comprehensive_chart(label2t, chart_key):
 
         if selected_period != st.session_state[f"{chart_key}_period"]:
             st.session_state[f"{chart_key}_period"] = selected_period
-            st.rerun()
 
         months = next(m for n, m in PERIOD_OPTIONS if n == selected_period)
 
@@ -1042,6 +1125,10 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
 
         if isinstance(prices_data, pd.Series):
             prices_data = prices_data.to_frame()
+
+        # Timezone 제거
+        if hasattr(prices_data.index, 'tz') and prices_data.index.tz is not None:
+            prices_data.index = prices_data.index.tz_localize(None)
 
         # 컬럼명 변환
         rename_dict = {}
@@ -1107,7 +1194,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
                     fig = plot_monthly_returns(asset1_data, asset1)
                     st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
-                cols[0].error(f"{asset1} 실패: {str(e)}")
+                cols[0].error(f"{asset1} 실패")
 
             if i + 1 < len(assets):
                 asset2 = assets[i + 1]
@@ -1117,7 +1204,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
                         fig = plot_monthly_returns(asset2_data, asset2)
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
-                    cols[1].error(f"{asset2} 실패: {str(e)}")
+                    cols[1].error(f"{asset2} 실패")
 
         # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
         st.markdown("---")
@@ -1127,29 +1214,31 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
         for asset in assets:
             asset_data = prices_data[[asset]]
             stats = get_distribution_stats(asset_data, asset)
-            all_stats.append(stats)
+            if stats:
+                all_stats.append(stats)
         
-        stats_df = pd.DataFrame(all_stats)
-        styled = stats_df.style
-        numeric_cols = [col for col in stats_df.columns if col != '자산']
-        transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
-        
-        for col in numeric_cols:
-            numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
-            valid_vals = numeric_vals[numeric_vals.notna()]
-            if len(valid_vals) > 0:
-                vmin = valid_vals.min()
-                vmax = valid_vals.max()
-                styled = styled.background_gradient(
-                    subset=[col],
-                    cmap=transparent_YlOrBr,
-                    vmin=vmin,
-                    vmax=vmax,
-                    low=0.3,
-                    high=0.3
-                )
-        
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        if all_stats:
+            stats_df = pd.DataFrame(all_stats)
+            styled = stats_df.style
+            numeric_cols = [col for col in stats_df.columns if col != '자산']
+            transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
+            
+            for col in numeric_cols:
+                numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
+                valid_vals = numeric_vals[numeric_vals.notna()]
+                if len(valid_vals) > 0:
+                    vmin = valid_vals.min()
+                    vmax = valid_vals.max()
+                    styled = styled.background_gradient(
+                        subset=[col],
+                        cmap=transparent_YlOrBr,
+                        vmin=vmin,
+                        vmax=vmax,
+                        low=0.3,
+                        high=0.3
+                    )
+            
+            st.dataframe(styled, use_container_width=True, hide_index=True)
 
     # Tab 2: Rolling Volatility
     with tab_rv:
@@ -1513,11 +1602,7 @@ with st.sidebar:
     st.divider()
     st.caption("© 2026 KB Asset Management.")
 
-
-
-
     with st.sidebar.expander("📄 MIT License Details"):
-
         license_html = """
         <div style="font-size: 0.8rem; color: #808080; line-height: 1.5;">
             MIT License<br>
@@ -1533,9 +1618,6 @@ with st.sidebar:
         </div>
         """
         st.markdown(license_html, unsafe_allow_html=True)
-
-    
-
 
 
 if page == "📊 시장 성과":
