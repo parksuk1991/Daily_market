@@ -1405,7 +1405,7 @@ def show_page3():
         "• 목표주가: 최근 3~6개월 애널리스트 리포트 평균\n"
         "• Trailing PE, EPS: 최근 12M  |  Forward PE/EPS: 선행 12M(Blended Forward)"
     )
-        st.caption(
+    st.caption(
         "• Data Source: Yahoo Finance 내부 Reuters 및 TipRanks 데이터"
     )
 
