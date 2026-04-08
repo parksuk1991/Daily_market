@@ -1400,8 +1400,13 @@ def show_page3():
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">👨‍💼 애널리스트 & 밸류에이션</h1>', unsafe_allow_html=True)
     st.caption(
         "• 등급 점수: 1=Strong Buy  2=Buy  3=Neutral  4=Sell  5=Strong Sell\n"
+    )
+    st.caption(
         "• 목표주가: 최근 3~6개월 애널리스트 리포트 평균\n"
-        "• Trailing PE/EPS: 최근 12M  |  Forward PE/EPS: 선행 12M"
+        "• Trailing PE, EPS: 최근 12M  |  Forward PE/EPS: 선행 12M(Blended Forward)"
+    )
+        st.caption(
+        "• Data Source: Yahoo Finance 내부 Reuters 및 TipRanks 데이터"
     )
 
     col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
