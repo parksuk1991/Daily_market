@@ -558,10 +558,7 @@ def render_news_table(df: pd.DataFrame):
 
 
 # ======================================================
-# Analyst & Valuation Functions (개선 버전)
-# ======================================================
-# ======================================================
-# Analyst & Valuation Functions (완전 개선 버전)
+# Analyst & Valuation Functions
 # ======================================================
 
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
@@ -580,19 +577,16 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
         }
         
         try:
-            # 재시도 로직 (최대 3회)
             for attempt in range(3):
                 try:
                     ticker_obj = yf.Ticker(sym)
                     
-                    # info 데이터 수집 (timeout 설정)
                     info = ticker_obj.info or {}
                     
                     if not info:
                         time.sleep(0.5)
                         continue
                     
-                    # 현재가 추출 (우선순위별)
                     current_px = None
                     for field in ['regularMarketPrice', 'currentPrice', 'bid', 'ask', 'previousClose']:
                         val = info.get(field)
@@ -600,7 +594,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                             current_px = val
                             break
                     
-                    # 목표주가 추출
                     target_px = None
                     for field in ['targetMeanPrice', 'targetPrice']:
                         val = info.get(field)
@@ -608,7 +601,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                             target_px = val
                             break
                     
-                    # 추천 등급
                     rec_mean = info.get('recommendationMean')
                     if rec_mean and isinstance(rec_mean, (int, float)):
                         rec_mean = float(rec_mean)
@@ -621,10 +613,8 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                     else:
                         rec_key = rec_key.capitalize()
                     
-                    # 회사명
                     short_name = info.get('shortName') or info.get('longName') or sym
                     
-                    # 상승여력 계산
                     upside = None
                     if target_px and current_px and current_px > 0:
                         try:
@@ -641,18 +631,18 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                         '현재가': current_px,
                         '상승여력(%)': upside,
                     }
-                    break  # 성공하면 루프 탈출
+                    break 
                     
                 except Exception as e:
                     if attempt < 2:
-                        time.sleep(0.5 * (attempt + 1))  # 지수 백오프
+                        time.sleep(0.5 * (attempt + 1))  
                     continue
         
         except Exception as e:
-            pass  # 기본값 유지
+            pass  
         
         rows.append(data)
-        time.sleep(0.3)  # API Rate limit 회피
+        time.sleep(0.3)  
     
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상승여력(%)']]
@@ -674,7 +664,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
         }
         
         try:
-            # 재시도 로직 (최대 3회)
+         
             for attempt in range(3):
                 try:
                     ticker_obj = yf.Ticker(sym)
@@ -684,7 +674,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                         time.sleep(0.5)
                         continue
                     
-                    # PE Ratio 추출
+                   
                     trailing_pe = None
                     for field in ['trailingPE', 'peRatio']:
                         val = info.get(field)
@@ -699,7 +689,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                             forward_pe = val
                             break
                     
-                    # EPS 추출 (Trailing)
+                    
                     t_eps = None
                     for field in ['trailingEps', 'epsTrailingTwelveMonths', 'eps']:
                         val = info.get(field)
@@ -707,7 +697,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                             t_eps = val
                             break
                     
-                    # EPS 추출 (Forward)
+                    
                     f_eps = None
                     for field in ['forwardEps', 'epsForward']:
                         val = info.get(field)
@@ -715,7 +705,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                             f_eps = val
                             break
                     
-                    # EPS 성장률
+                    
                     eps_growth = None
                     if t_eps and f_eps and isinstance(t_eps, (int, float)) and isinstance(f_eps, (int, float)):
                         try:
@@ -724,7 +714,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                         except (ValueError, ZeroDivisionError, TypeError):
                             pass
                     
-                    # 회사명
+                    
                     short_name = info.get('shortName') or info.get('longName') or sym
                     
                     data = {
@@ -736,18 +726,18 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                         'Forward EPS': f_eps,
                         'EPS 상승률(%)': eps_growth,
                     }
-                    break  # 성공하면 루프 탈출
+                    break  
                     
                 except Exception as e:
                     if attempt < 2:
-                        time.sleep(0.5 * (attempt + 1))  # 지수 백오프
+                        time.sleep(0.5 * (attempt + 1))  
                     continue
         
         except Exception as e:
-            pass  # 기본값 유지
+            pass  
         
         rows.append(data)
-        time.sleep(0.3)  # API Rate limit 회피
+        time.sleep(0.3)  
     
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', 'Trailing PE', 'Forward PE', 'Trailing EPS', 'Forward EPS', 'EPS 상승률(%)']]
@@ -766,7 +756,7 @@ def format_number(val, decimals=2):
 
 
 def get_perf_table_improved(label2ticker, ref_date=None):
-    """개선된 성과 테이블 - 인덱스 타입 확인 및 수정"""
+
     tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
@@ -783,7 +773,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
             df = df.to_frame()
         df = df.ffill().dropna(how='all')[tickers]
         
-        # 인덱스 타입 확인 및 timezone 제거
+        
         if hasattr(df.index, 'tz') and df.index.tz is not None:
             df.index = df.index.tz_localize(None)
     except Exception as e:
@@ -889,7 +879,7 @@ def style_perf_table_with_databars(df, perf_cols):
 
 
 # ======================================================
-# Chart Functions for Page 1 (개선 버전)
+# Chart Functions for Page 1
 # ======================================================
 def plot_monthly_returns(prices_df, asset_name):
     """월별 수익률 차트"""
@@ -926,9 +916,9 @@ def plot_monthly_returns(prices_df, asset_name):
 
 
 def get_distribution_stats(prices_df, asset_name):
-    """분포 통계 계산"""
+
     try:
-        # 인덱스 timezone 제거
+        
         if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
             prices_df = prices_df.copy()
             prices_df.index = prices_df.index.tz_localize(None)
@@ -953,7 +943,7 @@ def get_distribution_stats(prices_df, asset_name):
 
 
 def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
-    """롤링 변동성 차트"""
+   
     try:
         if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
             prices_df = prices_df.copy()
@@ -985,7 +975,7 @@ def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
 
 
 def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
-    """롤링 샤프 비율 차트"""
+    
     try:
         if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
             prices_df = prices_df.copy()
@@ -1111,7 +1101,7 @@ def show_page1():
 
 def render_comprehensive_chart(label2t, chart_key):
     
-    # 기본 기간 또는 사용자 정의 기간 선택 탭
+    
     mode_tab1, mode_tab2 = st.tabs(["📅 기본 기간 설정", "🔧 사용자 정의 기간 설정"])
     
     # ===== 탭 1: 기본 기간 선택 =====
@@ -1158,7 +1148,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 key=f"{chart_key}_end_date"
             )
         
-        # 날짜 검증
+        
         if start_date_custom >= end_date_custom:
             st.error("❌ 시작일이 종료일보다 이전이어야 합니다.")
             return
@@ -1168,7 +1158,7 @@ def render_comprehensive_chart(label2t, chart_key):
             st.error("❌ 최소 5일 이상의 기간을 선택해주세요.")
             return
         
-        # 기간 정보 표시
+        
         st.info(f"📊 분석 기간: {start_date_custom} ~ {end_date_custom} ({days_diff}일)")
         
         if st.button("📈 분석 시작", key=f"{chart_key}_analyze_btn", type="primary"):
@@ -1178,7 +1168,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
 
 def display_chart_analysis(label2t, start_date, end_date, period_label):
-    """기간 데이터에 대한 분석 차트 표시"""
+    
     
     try:
         tickers = list(label2t.values())
@@ -1192,11 +1182,11 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
         if isinstance(prices_data, pd.Series):
             prices_data = prices_data.to_frame()
 
-        # Timezone 제거
+        
         if hasattr(prices_data.index, 'tz') and prices_data.index.tz is not None:
             prices_data.index = prices_data.index.tz_localize(None)
 
-        # 컬럼명 변환
+        
         rename_dict = {}
         for label, ticker in label2t.items():
             if ticker in prices_data.columns:
@@ -1213,7 +1203,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
         st.error(f"❌ 데이터 다운로드 실패: {str(e)}")
         return
 
-    # ===== Cumulative Returns 차트 =====
+    # ===== Cumulative Returns =====
     st.markdown(f'<h3 style="color: {TITLE_COLOR};">📈 누적 수익률 ({period_label})</h3>', unsafe_allow_html=True)
     norm = prices_data / prices_data.iloc[0] * 100
     fig = go.Figure()
