@@ -562,7 +562,6 @@ def render_news_table(df: pd.DataFrame):
 # ======================================================
 
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
-    """개선된 애널리스트 데이터 수집 - 캐싱 및 다중 재시도"""
     rows = []
     
     for sym in ticker_syms:
@@ -649,7 +648,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
 
 
 def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
-    """개선된 밸류에이션 데이터 수집 - 캐싱 및 다중 재시도"""
     rows = []
     
     for sym in ticker_syms:
