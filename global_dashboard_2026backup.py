@@ -558,97 +558,164 @@ def render_news_table(df: pd.DataFrame):
 
 
 # ======================================================
-# Analyst & Valuation Functions (개선 버전)
+# Analyst & Valuation Functions
 # ======================================================
+
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
-    """개선된 애널리스트 데이터 수집"""
     rows = []
+    
     for sym in ticker_syms:
+        data = {
+            'Ticker': sym,
+            '종목명': 'N/A',
+            '등급 점수': None,
+            '등급': 'N/A',
+            '목표주가': None,
+            '현재가': None,
+            '상승여력(%)': None,
+        }
+        
         try:
-            # 재시도 로직 추가
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     ticker_obj = yf.Ticker(sym)
+                    
                     info = ticker_obj.info or {}
                     
-                    current_px = info.get('regularMarketPrice') or info.get('currentPrice') or info.get('bid')
-                    target_px = info.get('targetMeanPrice')
-                    rec_mean = info.get('recommendationMean')
-                    rec_key = info.get('recommendationKey', 'none')
+                    if not info:
+                        time.sleep(0.5)
+                        continue
                     
-                    upside = None
-                    if target_px and current_px and float(current_px or 0) != 0:
-                        try:
-                            upside = ((float(target_px) / float(current_px)) - 1) * 100
-                        except (ValueError, ZeroDivisionError):
-                            pass
+                    current_px = None
+                    for field in ['regularMarketPrice', 'currentPrice', 'bid', 'ask', 'previousClose']:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0:
+                            current_px = val
+                            break
+                    
+                    target_px = None
+                    for field in ['targetMeanPrice', 'targetPrice']:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0:
+                            target_px = val
+                            break
+                    
+                    rec_mean = info.get('recommendationMean')
+                    if rec_mean and isinstance(rec_mean, (int, float)):
+                        rec_mean = float(rec_mean)
+                    else:
+                        rec_mean = None
+                    
+                    rec_key = info.get('recommendationKey', 'none')
+                    if not rec_key or rec_key == 'none':
+                        rec_key = 'N/A'
+                    else:
+                        rec_key = rec_key.capitalize()
                     
                     short_name = info.get('shortName') or info.get('longName') or sym
                     
-                    rows.append({
+                    upside = None
+                    if target_px and current_px and current_px > 0:
+                        try:
+                            upside = ((float(target_px) / float(current_px)) - 1) * 100
+                        except (ValueError, ZeroDivisionError, TypeError):
+                            pass
+                    
+                    data = {
                         'Ticker': sym,
                         '종목명': short_name,
                         '등급 점수': rec_mean,
-                        '등급': rec_key.capitalize() if rec_key and rec_key != 'none' else 'N/A',
+                        '등급': rec_key,
                         '목표주가': target_px,
                         '현재가': current_px,
                         '상승여력(%)': upside,
-                    })
-                    break
+                    }
+                    break 
+                    
                 except Exception as e:
-                    if attempt < 1:
-                        time.sleep(1)
-                    else:
-                        rows.append({
-                            'Ticker': sym,
-                            '종목명': 'N/A',
-                            '등급 점수': None,
-                            '등급': 'N/A',
-                            '목표주가': None,
-                            '현재가': None,
-                            '상승여력(%)': None,
-                        })
-            time.sleep(0.2)
-        except Exception:
-            rows.append({
-                'Ticker': sym,
-                '종목명': 'N/A',
-                '등급 점수': None,
-                '등급': 'N/A',
-                '목표주가': None,
-                '현재가': None,
-                '상승여력(%)': None,
-            })
+                    if attempt < 2:
+                        time.sleep(0.5 * (attempt + 1))  
+                    continue
+        
+        except Exception as e:
+            pass  
+        
+        rows.append(data)
+        time.sleep(0.3)  
     
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상승여력(%)']]
 
 
 def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
-    """개선된 밸류에이션 데이터 수집"""
     rows = []
+    
     for sym in ticker_syms:
+        data = {
+            'Ticker': sym,
+            '종목명': 'N/A',
+            'Trailing PE': None,
+            'Forward PE': None,
+            'Trailing EPS': None,
+            'Forward EPS': None,
+            'EPS 상승률(%)': None,
+        }
+        
         try:
-            for attempt in range(2):
+         
+            for attempt in range(3):
                 try:
                     ticker_obj = yf.Ticker(sym)
                     info = ticker_obj.info or {}
                     
-                    trailing_pe = info.get('trailingPE')
-                    forward_pe = info.get('forwardPE')
-                    t_eps = info.get('trailingEps') or info.get('trailingEPS')
-                    f_eps = info.get('forwardEps') or info.get('forwardEPS')
+                    if not info:
+                        time.sleep(0.5)
+                        continue
+                    
+                   
+                    trailing_pe = None
+                    for field in ['trailingPE', 'peRatio']:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0:
+                            trailing_pe = val
+                            break
+                    
+                    forward_pe = None
+                    for field in ['forwardPE', 'forwardPEG']:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0:
+                            forward_pe = val
+                            break
+                    
+                    
+                    t_eps = None
+                    for field in ['trailingEps', 'epsTrailingTwelveMonths', 'eps']:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)):
+                            t_eps = val
+                            break
+                    
+                    
+                    f_eps = None
+                    for field in ['forwardEps', 'epsForward']:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)):
+                            f_eps = val
+                            break
+                    
                     
                     eps_growth = None
-                    if t_eps and f_eps and float(t_eps or 0) != 0:
+                    if t_eps and f_eps and isinstance(t_eps, (int, float)) and isinstance(f_eps, (int, float)):
                         try:
-                            eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
-                        except (ValueError, ZeroDivisionError):
+                            if float(t_eps) != 0:
+                                eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
+                        except (ValueError, ZeroDivisionError, TypeError):
                             pass
+                    
                     
                     short_name = info.get('shortName') or info.get('longName') or sym
                     
-                    rows.append({
+                    data = {
                         'Ticker': sym,
                         '종목명': short_name,
                         'Trailing PE': trailing_pe,
@@ -656,32 +723,19 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                         'Trailing EPS': t_eps,
                         'Forward EPS': f_eps,
                         'EPS 상승률(%)': eps_growth,
-                    })
-                    break
+                    }
+                    break  
+                    
                 except Exception as e:
-                    if attempt < 1:
-                        time.sleep(1)
-                    else:
-                        rows.append({
-                            'Ticker': sym,
-                            '종목명': 'N/A',
-                            'Trailing PE': None,
-                            'Forward PE': None,
-                            'Trailing EPS': None,
-                            'Forward EPS': None,
-                            'EPS 상승률(%)': None,
-                        })
-            time.sleep(0.2)
-        except Exception:
-            rows.append({
-                'Ticker': sym,
-                '종목명': 'N/A',
-                'Trailing PE': None,
-                'Forward PE': None,
-                'Trailing EPS': None,
-                'Forward EPS': None,
-                'EPS 상승률(%)': None,
-            })
+                    if attempt < 2:
+                        time.sleep(0.5 * (attempt + 1))  
+                    continue
+        
+        except Exception as e:
+            pass  
+        
+        rows.append(data)
+        time.sleep(0.3)  
     
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', 'Trailing PE', 'Forward PE', 'Trailing EPS', 'Forward EPS', 'EPS 상승률(%)']]
@@ -700,7 +754,7 @@ def format_number(val, decimals=2):
 
 
 def get_perf_table_improved(label2ticker, ref_date=None):
-    """개선된 성과 테이블 - 인덱스 타입 확인 및 수정"""
+
     tickers = list(label2ticker.values())
     if ref_date is None:
         ref_date = datetime.now().date()
@@ -717,7 +771,7 @@ def get_perf_table_improved(label2ticker, ref_date=None):
             df = df.to_frame()
         df = df.ffill().dropna(how='all')[tickers]
         
-        # 인덱스 타입 확인 및 timezone 제거
+        
         if hasattr(df.index, 'tz') and df.index.tz is not None:
             df.index = df.index.tz_localize(None)
     except Exception as e:
@@ -823,7 +877,7 @@ def style_perf_table_with_databars(df, perf_cols):
 
 
 # ======================================================
-# Chart Functions for Page 1 (개선 버전)
+# Chart Functions for Page 1
 # ======================================================
 def plot_monthly_returns(prices_df, asset_name):
     """월별 수익률 차트"""
@@ -860,9 +914,9 @@ def plot_monthly_returns(prices_df, asset_name):
 
 
 def get_distribution_stats(prices_df, asset_name):
-    """분포 통계 계산"""
+
     try:
-        # 인덱스 timezone 제거
+        
         if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
             prices_df = prices_df.copy()
             prices_df.index = prices_df.index.tz_localize(None)
@@ -887,7 +941,7 @@ def get_distribution_stats(prices_df, asset_name):
 
 
 def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
-    """롤링 변동성 차트"""
+   
     try:
         if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
             prices_df = prices_df.copy()
@@ -919,7 +973,7 @@ def plot_rolling_volatility_visual(prices_df, asset_name, window=126):
 
 
 def plot_rolling_sharpe(prices_df, asset_name, window=126, risk_free_rate=0.02):
-    """롤링 샤프 비율 차트"""
+    
     try:
         if hasattr(prices_df.index, 'tz') and prices_df.index.tz is not None:
             prices_df = prices_df.copy()
@@ -1045,7 +1099,7 @@ def show_page1():
 
 def render_comprehensive_chart(label2t, chart_key):
     
-    # 기본 기간 또는 사용자 정의 기간 선택 탭
+    
     mode_tab1, mode_tab2 = st.tabs(["📅 기본 기간 설정", "🔧 사용자 정의 기간 설정"])
     
     # ===== 탭 1: 기본 기간 선택 =====
@@ -1092,7 +1146,7 @@ def render_comprehensive_chart(label2t, chart_key):
                 key=f"{chart_key}_end_date"
             )
         
-        # 날짜 검증
+        
         if start_date_custom >= end_date_custom:
             st.error("❌ 시작일이 종료일보다 이전이어야 합니다.")
             return
@@ -1102,7 +1156,7 @@ def render_comprehensive_chart(label2t, chart_key):
             st.error("❌ 최소 5일 이상의 기간을 선택해주세요.")
             return
         
-        # 기간 정보 표시
+        
         st.info(f"📊 분석 기간: {start_date_custom} ~ {end_date_custom} ({days_diff}일)")
         
         if st.button("📈 분석 시작", key=f"{chart_key}_analyze_btn", type="primary"):
@@ -1112,7 +1166,7 @@ def render_comprehensive_chart(label2t, chart_key):
 
 
 def display_chart_analysis(label2t, start_date, end_date, period_label):
-    """기간 데이터에 대한 분석 차트 표시"""
+    
     
     try:
         tickers = list(label2t.values())
@@ -1126,11 +1180,11 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
         if isinstance(prices_data, pd.Series):
             prices_data = prices_data.to_frame()
 
-        # Timezone 제거
+        
         if hasattr(prices_data.index, 'tz') and prices_data.index.tz is not None:
             prices_data.index = prices_data.index.tz_localize(None)
 
-        # 컬럼명 변환
+        
         rename_dict = {}
         for label, ticker in label2t.items():
             if ticker in prices_data.columns:
@@ -1147,7 +1201,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
         st.error(f"❌ 데이터 다운로드 실패: {str(e)}")
         return
 
-    # ===== Cumulative Returns 차트 =====
+    # ===== Cumulative Returns =====
     st.markdown(f'<h3 style="color: {TITLE_COLOR};">📈 누적 수익률 ({period_label})</h3>', unsafe_allow_html=True)
     norm = prices_data / prices_data.iloc[0] * 100
     fig = go.Figure()
