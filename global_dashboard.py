@@ -562,9 +562,15 @@ def render_news_table(df: pd.DataFrame):
 # ======================================================
 
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
+    """
+    개선된 애널리스트 데이터 수집
+    - 더 강화된 재시도 로직
+    - 타임아웃 설정
+    - 더 다양한 데이터 필드 대체값
+    """
     rows = []
     
-    for sym in ticker_syms:
+    for idx, sym in enumerate(ticker_syms):
         data = {
             'Ticker': sym,
             '종목명': 'N/A',
@@ -575,82 +581,129 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
             '상승여력(%)': None,
         }
         
-        try:
-            for attempt in range(3):
+        success = False
+        for attempt in range(5):  # 재시도 횟수 증가: 3 → 5
+            try:
+                ticker_obj = yf.Ticker(sym)
+                
+                # 타임아웃 설정이 있는 info 요청 (기본 10초)
                 try:
-                    ticker_obj = yf.Ticker(sym)
-                    
-                    info = ticker_obj.info or {}
-                    
-                    if not info:
-                        time.sleep(0.5)
+                    info = ticker_obj.info
+                except:
+                    info = {}
+                
+                if not info:
+                    wait_time = 1 + (attempt * 1.5)
+                    time.sleep(wait_time)
+                    continue
+                
+                # 현재가 - 더 많은 필드 우선순위
+                current_px = None
+                for field in ['currentPrice', 'regularMarketPrice', 'bid', 'ask', 
+                             'previousClose', 'open', 'dayHigh']:
+                    try:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0:
+                            current_px = float(val)
+                            break
+                    except:
                         continue
-                    
-                    current_px = None
-                    for field in ['regularMarketPrice', 'currentPrice', 'bid', 'ask', 'previousClose']:
+                
+                # 대체 방법: historical data의 최신��격
+                if not current_px:
+                    try:
+                        hist = ticker_obj.history(period='1d')
+                        if not hist.empty:
+                            current_px = float(hist['Close'].iloc[-1])
+                    except:
+                        pass
+                
+                # 목표주가 - 더 다양한 필드
+                target_px = None
+                for field in ['targetMeanPrice', 'targetPrice', 'targetMedianPrice']:
+                    try:
                         val = info.get(field)
                         if val and isinstance(val, (int, float)) and val > 0:
-                            current_px = val
+                            target_px = float(val)
                             break
-                    
-                    target_px = None
-                    for field in ['targetMeanPrice', 'targetPrice']:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0:
-                            target_px = val
-                            break
-                    
+                    except:
+                        continue
+                
+                # 등급 점수
+                rec_mean = None
+                try:
                     rec_mean = info.get('recommendationMean')
                     if rec_mean and isinstance(rec_mean, (int, float)):
                         rec_mean = float(rec_mean)
                     else:
                         rec_mean = None
-                    
-                    rec_key = info.get('recommendationKey', 'none')
-                    if not rec_key or rec_key == 'none':
-                        rec_key = 'N/A'
-                    else:
-                        rec_key = rec_key.capitalize()
-                    
+                except:
+                    rec_mean = None
+                
+                # 등급 텍스트
+                rec_key = 'N/A'
+                try:
+                    rec_str = info.get('recommendationKey', 'none')
+                    if rec_str and rec_str != 'none':
+                        rec_key = str(rec_str).capitalize()
+                except:
+                    pass
+                
+                # 종목명
+                try:
                     short_name = info.get('shortName') or info.get('longName') or sym
-                    
-                    upside = None
-                    if target_px and current_px and current_px > 0:
-                        try:
-                            upside = ((float(target_px) / float(current_px)) - 1) * 100
-                        except (ValueError, ZeroDivisionError, TypeError):
-                            pass
-                    
-                    data = {
-                        'Ticker': sym,
-                        '종목명': short_name,
-                        '등급 점수': rec_mean,
-                        '등급': rec_key,
-                        '목표주가': target_px,
-                        '현재가': current_px,
-                        '상승여력(%)': upside,
-                    }
-                    break 
-                    
-                except Exception as e:
-                    if attempt < 2:
-                        time.sleep(0.5 * (attempt + 1))  
-                    continue
-        
-        except Exception as e:
-            pass  
+                    short_name = str(short_name) if short_name else sym
+                except:
+                    short_name = sym
+                
+                # 상승여력
+                upside = None
+                if target_px and current_px and float(current_px) > 0:
+                    try:
+                        upside = ((float(target_px) / float(current_px)) - 1) * 100
+                    except:
+                        pass
+                
+                data = {
+                    'Ticker': sym,
+                    '종목명': short_name,
+                    '등급 점수': rec_mean,
+                    '등급': rec_key,
+                    '목표주가': target_px,
+                    '현재가': current_px,
+                    '상승여력(%)': upside,
+                }
+                success = True
+                break
+                
+            except Exception as e:
+                wait_time = 1.5 + (attempt * 1.0)
+                if attempt < 4:
+                    time.sleep(wait_time)
+                continue
         
         rows.append(data)
-        time.sleep(0.3)  
+        
+        # 진행 상황 피드백 (매 3개 종목마다)
+        if (idx + 1) % 3 == 0:
+            remaining = len(ticker_syms) - idx - 1
+            if remaining > 0:
+                time.sleep(0.5)
     
     df = pd.DataFrame(rows)
-    return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상승여력(%)']]
+    return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상여력(%)']]
 
 
 def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
+    """
+    개선된 밸류에이션 & EPS 수집
+    - 더 강화된 재시도 로직
+    - 더 다양한 데이터 필드 대체값
+    - 우수한 에러 처리
+    """
     rows = []
     
-    for sym in ticker_syms:
+    for idx, sym in enumerate(ticker_syms):
         data = {
             'Ticker': sym,
             '종목명': 'N/A',
@@ -661,84 +714,117 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
             'EPS 상승률(%)': None,
         }
         
-        try:
-         
-            for attempt in range(3):
+        success = False
+        for attempt in range(5):  # 재시도 횟수 증가: 3 → 5
+            try:
+                ticker_obj = yf.Ticker(sym)
+                
                 try:
-                    ticker_obj = yf.Ticker(sym)
-                    info = ticker_obj.info or {}
-                    
-                    if not info:
-                        time.sleep(0.5)
-                        continue
-                    
-                   
-                    trailing_pe = None
-                    for field in ['trailingPE', 'peRatio']:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0:
-                            trailing_pe = val
-                            break
-                    
-                    forward_pe = None
-                    for field in ['forwardPE', 'forwardPEG']:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0:
-                            forward_pe = val
-                            break
-                    
-                    
-                    t_eps = None
-                    for field in ['trailingEps', 'epsTrailingTwelveMonths', 'eps']:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)):
-                            t_eps = val
-                            break
-                    
-                    
-                    f_eps = None
-                    for field in ['forwardEps', 'epsForward']:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)):
-                            f_eps = val
-                            break
-                    
-                    
-                    eps_growth = None
-                    if t_eps and f_eps and isinstance(t_eps, (int, float)) and isinstance(f_eps, (int, float)):
-                        try:
-                            if float(t_eps) != 0:
-                                eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
-                        except (ValueError, ZeroDivisionError, TypeError):
-                            pass
-                    
-                    
-                    short_name = info.get('shortName') or info.get('longName') or sym
-                    
-                    data = {
-                        'Ticker': sym,
-                        '종목명': short_name,
-                        'Trailing PE': trailing_pe,
-                        'Forward PE': forward_pe,
-                        'Trailing EPS': t_eps,
-                        'Forward EPS': f_eps,
-                        'EPS 상승률(%)': eps_growth,
-                    }
-                    break  
-                    
-                except Exception as e:
-                    if attempt < 2:
-                        time.sleep(0.5 * (attempt + 1))  
+                    info = ticker_obj.info
+                except:
+                    info = {}
+                
+                if not info:
+                    wait_time = 1 + (attempt * 1.5)
+                    time.sleep(wait_time)
                     continue
-        
-        except Exception as e:
-            pass  
+                
+                # Trailing PE - 더 많은 필드
+                trailing_pe = None
+                for field in ['trailingPE', 'peRatio', 'trailingPegRatio']:
+                    try:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0 and val < 500:
+                            trailing_pe = float(val)
+                            break
+                    except:
+                        continue
+                
+                # Forward PE - 더 많은 필드
+                forward_pe = None
+                for field in ['forwardPE', 'forwardPEG', 'forwardPegRatio']:
+                    try:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)) and val > 0 and val < 500:
+                            forward_pe = float(val)
+                            break
+                    except:
+                        continue
+                
+                # Trailing EPS - 더 많은 필드
+                t_eps = None
+                for field in ['trailingEps', 'epsTrailingTwelveMonths', 'eps', 'lastEps']:
+                    try:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)):
+                            t_eps = float(val)
+                            break
+                    except:
+                        continue
+                
+                # Forward EPS - 더 많은 필드
+                f_eps = None
+                for field in ['forwardEps', 'epsForward', 'forwardEPS']:
+                    try:
+                        val = info.get(field)
+                        if val and isinstance(val, (int, float)):
+                            f_eps = float(val)
+                            break
+                    except:
+                        continue
+                
+                # EPS 성장률
+                eps_growth = None
+                if t_eps and f_eps and isinstance(t_eps, (int, float)) and isinstance(f_eps, (int, float)):
+                    try:
+                        if float(t_eps) != 0:
+                            eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
+                    except:
+                        pass
+                
+                # 종목명
+                try:
+                    short_name = info.get('shortName') or info.get('longName') or sym
+                    short_name = str(short_name) if short_name else sym
+                except:
+                    short_name = sym
+                
+                data = {
+                    'Ticker': sym,
+                    '종목명': short_name,
+                    'Trailing PE': trailing_pe,
+                    'Forward PE': forward_pe,
+                    'Trailing EPS': t_eps,
+                    'Forward EPS': f_eps,
+                    'EPS 상승률(%)': eps_growth,
+                }
+                success = True
+                break
+                
+            except Exception as e:
+                wait_time = 1.5 + (attempt * 1.0)
+                if attempt < 4:
+                    time.sleep(wait_time)
+                continue
         
         rows.append(data)
-        time.sleep(0.3)  
+        
+        # 진행 상황 피드백 (매 3개 종목마다)
+        if (idx + 1) % 3 == 0:
+            remaining = len(ticker_syms) - idx - 1
+            if remaining > 0:
+                time.sleep(0.5)
     
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', 'Trailing PE', 'Forward PE', 'Trailing EPS', 'Forward EPS', 'EPS 상승률(%)']]
+
+
+
+
+
+
+
+
 
 
 # ======================================================
