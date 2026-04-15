@@ -556,18 +556,11 @@ def render_news_table(df: pd.DataFrame):
         height=min(600, 40 + len(display) * 35),
     )
 
-
 # ======================================================
 # Analyst & Valuation Functions
 # ======================================================
 
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
-    """
-    개선된 애널리스트 데이터 수집
-    - 더 강화된 재시도 로직
-    - 타임아웃 설정
-    - 더 다양한 데이터 필드 대체값
-    """
     rows = []
     
     for idx, sym in enumerate(ticker_syms):
@@ -582,11 +575,11 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
         }
         
         success = False
-        for attempt in range(5):  # 재시도 횟수 증가: 3 → 5
+        for attempt in range(5): 
             try:
                 ticker_obj = yf.Ticker(sym)
                 
-                # 타임아웃 설정이 있는 info 요청 (기본 10초)
+
                 try:
                     info = ticker_obj.info
                 except:
@@ -597,7 +590,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                     time.sleep(wait_time)
                     continue
                 
-                # 현재가 - 더 많은 필드 우선순위
                 current_px = None
                 for field in ['currentPrice', 'regularMarketPrice', 'bid', 'ask', 
                              'previousClose', 'open', 'dayHigh']:
@@ -609,7 +601,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                     except:
                         continue
                 
-                # 대체 방법: historical data의 최신��격
                 if not current_px:
                     try:
                         hist = ticker_obj.history(period='1d')
@@ -618,7 +609,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                     except:
                         pass
                 
-                # 목표주가 - 더 다양한 필드
                 target_px = None
                 for field in ['targetMeanPrice', 'targetPrice', 'targetMedianPrice']:
                     try:
@@ -629,7 +619,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                     except:
                         continue
                 
-                # 등급 점수
                 rec_mean = None
                 try:
                     rec_mean = info.get('recommendationMean')
@@ -640,7 +629,6 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                 except:
                     rec_mean = None
                 
-                # 등급 텍스트
                 rec_key = 'N/A'
                 try:
                     rec_str = info.get('recommendationKey', 'none')
@@ -649,14 +637,12 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
                 except:
                     pass
                 
-                # 종목명
                 try:
                     short_name = info.get('shortName') or info.get('longName') or sym
                     short_name = str(short_name) if short_name else sym
                 except:
                     short_name = sym
                 
-                # 상승여력
                 upside = None
                 if target_px and current_px and float(current_px) > 0:
                     try:
@@ -684,23 +670,17 @@ def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
         
         rows.append(data)
         
-        # 진행 상황 피드백 (매 3개 종목마다)
         if (idx + 1) % 3 == 0:
             remaining = len(ticker_syms) - idx - 1
             if remaining > 0:
                 time.sleep(0.5)
     
     df = pd.DataFrame(rows)
-    return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상여력(%)']]
+    return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상승여력(%)']]
 
 
 def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
-    """
-    개선된 밸류에이션 & EPS 수집
-    - 더 강화된 재시도 로직
-    - 더 다양한 데이터 필드 대체값
-    - 우수한 에러 처리
-    """
+
     rows = []
     
     for idx, sym in enumerate(ticker_syms):
@@ -715,7 +695,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
         }
         
         success = False
-        for attempt in range(5):  # 재시도 횟수 증가: 3 → 5
+        for attempt in range(5): 
             try:
                 ticker_obj = yf.Ticker(sym)
                 
@@ -729,7 +709,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                     time.sleep(wait_time)
                     continue
                 
-                # Trailing PE - 더 많은 필드
+
                 trailing_pe = None
                 for field in ['trailingPE', 'peRatio', 'trailingPegRatio']:
                     try:
@@ -740,7 +720,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                     except:
                         continue
                 
-                # Forward PE - 더 많은 필드
+
                 forward_pe = None
                 for field in ['forwardPE', 'forwardPEG', 'forwardPegRatio']:
                     try:
@@ -751,7 +731,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                     except:
                         continue
                 
-                # Trailing EPS - 더 많은 필드
+
                 t_eps = None
                 for field in ['trailingEps', 'epsTrailingTwelveMonths', 'eps', 'lastEps']:
                     try:
@@ -762,7 +742,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                     except:
                         continue
                 
-                # Forward EPS - 더 많은 필드
+
                 f_eps = None
                 for field in ['forwardEps', 'epsForward', 'forwardEPS']:
                     try:
@@ -773,7 +753,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                     except:
                         continue
                 
-                # EPS 성장률
+
                 eps_growth = None
                 if t_eps and f_eps and isinstance(t_eps, (int, float)) and isinstance(f_eps, (int, float)):
                     try:
@@ -782,7 +762,7 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
                     except:
                         pass
                 
-                # 종목명
+
                 try:
                     short_name = info.get('shortName') or info.get('longName') or sym
                     short_name = str(short_name) if short_name else sym
@@ -809,7 +789,6 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
         
         rows.append(data)
         
-        # 진행 상황 피드백 (매 3개 종목마다)
         if (idx + 1) % 3 == 0:
             remaining = len(ticker_syms) - idx - 1
             if remaining > 0:
@@ -817,15 +796,6 @@ def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
     
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', 'Trailing PE', 'Forward PE', 'Trailing EPS', 'Forward EPS', 'EPS 상승률(%)']]
-
-
-
-
-
-
-
-
-
 
 # ======================================================
 # Performance Table Functions
