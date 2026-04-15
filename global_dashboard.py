@@ -1106,7 +1106,6 @@ def plot_maximum_drawdown(prices_df, asset_name):
 # ======================================================
 def show_page1():
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">🌐 Market Performance</h1>', unsafe_allow_html=True)
-    st.caption("추후 펀드 보유 종목에 한해서 분석되도록 개발 예정..")
     update_clicked = st.button("🔄 Update", type="primary", key="p1_update")
 
     if update_clicked:
@@ -1703,6 +1702,7 @@ with st.sidebar:
     )
 
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">💡 Global Market</h1>', unsafe_allow_html=True)
+    st.caption("추후 펀드 보유 종목만 분석되도록 개발 예정..")
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
