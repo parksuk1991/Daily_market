@@ -106,6 +106,25 @@ def create_transparent_YlOrBr_cmap(alpha=0.4):
     return mcolors.ListedColormap(colors_with_alpha)
 
 
+def _grad(styled, col, raw_values, cmap, lh=0.3, vmin=None, vmax=None):
+    """문자열·None 이 섞인 컬럼에도 안전한 배경 그라데이션.
+    pandas 3.x 에서 background_gradient 가 문자열 셀을 float 로 변환하려다
+    ValueError 를 내는 문제를, 숫자 gmap 을 명시적으로 전달해 회피한다."""
+    g = pd.to_numeric(
+        pd.Series(list(raw_values)).astype(str)
+          .str.replace('%', '', regex=False).str.replace(',', '', regex=False).str.strip(),
+        errors='coerce')
+    if not g.notna().any():
+        return styled
+    vmn = float(g.min()) if vmin is None else vmin
+    vmx = float(g.max()) if vmax is None else vmax
+    try:
+        return styled.background_gradient(subset=[col], cmap=cmap, vmin=vmn, vmax=vmx,
+                                          low=lh, high=lh, gmap=g.to_numpy(dtype=float))
+    except Exception:
+        return styled
+
+
 # ======================================================
 # yfinance 안정화 레이어
 #  - Streamlit Cloud 공용 IP 에서 Yahoo 가 .info 호출을 봇 차단/레이트리밋 하여
@@ -945,31 +964,12 @@ def get_perf_table_improved(label2ticker, ref_date=None):
 
 
 def style_perf_table_with_databars(df, perf_cols):
-    """YlOrBr 색상 히트맵 적용 (투명도 조정)"""
+    """YlOrBr 색상 히트맵 적용 (투명도 조정). 셀이 문자열이어도 안전(gmap)."""
     styled = df.copy().style
     transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
-
     for col in perf_cols:
         if col in df.columns:
-            numeric_vals = pd.to_numeric(
-                df[col].astype(str).str.replace('%', '').str.strip(),
-                errors='coerce'
-            )
-            valid_vals = numeric_vals[numeric_vals.notna()]
-            
-            if len(valid_vals) > 0:
-                vmin = valid_vals.min()
-                vmax = valid_vals.max()
-                
-                styled = styled.background_gradient(
-                    subset=[col],
-                    cmap=transparent_YlOrBr,
-                    vmin=vmin,
-                    vmax=vmax,
-                    low=0.3,
-                    high=0.3
-                )
-
+            styled = _grad(styled, col, df[col], transparent_YlOrBr)
     return styled
 
 
@@ -1402,22 +1402,8 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
             styled = stats_df.style
             numeric_cols = [col for col in stats_df.columns if col != '자산']
             transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
-            
             for col in numeric_cols:
-                numeric_vals = pd.to_numeric(stats_df[col], errors='coerce')
-                valid_vals = numeric_vals[numeric_vals.notna()]
-                if len(valid_vals) > 0:
-                    vmin = valid_vals.min()
-                    vmax = valid_vals.max()
-                    styled = styled.background_gradient(
-                        subset=[col],
-                        cmap=transparent_YlOrBr,
-                        vmin=vmin,
-                        vmax=vmax,
-                        low=0.3,
-                        high=0.3
-                    )
-            
+                styled = _grad(styled, col, stats_df[col], transparent_YlOrBr)
             st.dataframe(styled, use_container_width=True, hide_index=True)
 
     # Tab 2: Rolling Volatility
@@ -1450,14 +1436,8 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
             rs_df = compute_relative_strength(prices_data)
             if not rs_df.empty:
                 styled_rs = rs_df.style.format({'기간성과(%)': '{:+.2f}'})
-                rs_num = pd.to_numeric(rs_df['기간성과(%)'], errors='coerce')
-                if rs_num.notna().any():
-                    styled_rs = styled_rs.background_gradient(
-                        subset=['기간성과(%)'],
-                        cmap=create_transparent_YlOrBr_cmap(alpha=0.4),
-                        vmin=float(rs_num.min()), vmax=float(rs_num.max()),
-                        low=0.3, high=0.3,
-                    )
+                styled_rs = _grad(styled_rs, '기간성과(%)', rs_df['기간성과(%)'],
+                                  create_transparent_YlOrBr_cmap(alpha=0.4))
                 st.dataframe(styled_rs, use_container_width=True, hide_index=True,
                              height=min(520, 40 + len(rs_df) * 35))
             else:
@@ -1634,19 +1614,9 @@ def show_page3():
                 .map(color_upside, subset=['상승여력(%)'])
                 .map(color_rating, subset=['등급 점수']))
     
-    upside_vals = pd.to_numeric(analyst_sorted['상승여력(%)'], errors='coerce')
-    valid_upside = upside_vals[upside_vals.notna()]
-    if len(valid_upside) > 0:
-        transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
-        styled_a = styled_a.background_gradient(
-            subset=['상승여력(%)'], 
-            cmap=transparent_YlOrBr, 
-            vmin=-20, 
-            vmax=40, 
-            low=0.3, 
-            high=0.3
-        )
-    
+    styled_a = _grad(styled_a, '상승여력(%)', analyst_sorted['상승여력(%)'],
+                     create_transparent_YlOrBr_cmap(alpha=0.4), vmin=-20, vmax=40)
+
     st.dataframe(styled_a, use_container_width=True,
                  height=min(500, 40 + len(analyst_sorted) * 35))
 
@@ -1691,17 +1661,9 @@ def show_page3():
                 .format(fmt_v, na_rep='N/A')
                 .map(color_eps, subset=['EPS 상승률(%)']))
     
-    eps_vals = pd.to_numeric(val_sorted['EPS 상승률(%)'], errors='coerce')
-    valid_eps = eps_vals[eps_vals.notna()]
-    if len(valid_eps) > 0:
-        transparent_YlOrBr = create_transparent_YlOrBr_cmap(alpha=0.4)
-        styled_v = styled_v.background_gradient(
-            subset=['EPS 상승률(%)'], 
-            cmap=transparent_YlOrBr, 
-            low=0.3, 
-            high=0.3
-        )
-    
+    styled_v = _grad(styled_v, 'EPS 상승률(%)', val_sorted['EPS 상승률(%)'],
+                     create_transparent_YlOrBr_cmap(alpha=0.4))
+
     st.dataframe(styled_v, use_container_width=True,
                  height=min(500, 40 + len(val_sorted) * 35))
 
@@ -1750,6 +1712,7 @@ MACRO_OTHER = {
     '달러지수(DXY)': ('YF', 'DX-Y.NYB', 'idx'),
     'VIX': ('FRED', 'VIXCLS', 'idx'),
     '10Y 기대인플레': ('FRED', 'T10YIE', '%'),
+    '10Y 실질금리': ('FRED', 'DFII10', '%'),
     'HY 스프레드(OAS)': ('FRED', 'BAMLH0A0HYM2', '%'),
     'IG 스프레드(OAS)': ('FRED', 'BAMLC0A0CM', '%'),
 }
@@ -1922,24 +1885,117 @@ def analyze_etf_contribution(etf_ticker: str, period_days: int, asof_str: str) -
     return {'holdings_df': df, 'etf_ret_top10': etf_ret}
 
 
-def _render_news_block(query: str):
-    """뉴스 수집 + 한글 번역 렌더링(공통)."""
-    with st.spinner("뉴스 수집·번역 중..."):
-        news = fetch_stock_news(query, max_items=6)
-    if not news:
+_SUMMARY_STOPWORDS = set((
+    "the a an and or but of to in on for with at by from as is are was were be been being this "
+    "that these those it its has have had will would can could may might should their our your "
+    "his her they them he she we you not no more most very also than then so such into over under "
+    "about after before between during above below up down out off only just other some any each "
+    "all both few many said says new inc corp ltd co").split())
+
+
+def _extractive_summary(text: str, n: int = 3) -> str:
+    """외부 LLM 없이 빈도 기반 추출 요약(상위 n문장, 원문 순서 유지)."""
+    sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if 30 <= len(s.strip()) <= 400]
+    if len(sents) <= n:
+        return ' '.join(sents)
+    words = [w for w in re.findall(r"[A-Za-z']{3,}", text.lower()) if w not in _SUMMARY_STOPWORDS]
+    if not words:
+        return ' '.join(sents[:n])
+    freq = {}
+    for w in words:
+        freq[w] = freq.get(w, 0) + 1
+    mx = max(freq.values())
+    freq = {k: v / mx for k, v in freq.items()}
+    scored = []
+    for i, s in enumerate(sents):
+        sw = re.findall(r"[A-Za-z']{3,}", s.lower())
+        score = sum(freq.get(w, 0) for w in sw) / (len(sw) + 1e-6)
+        scored.append((score, i, s))
+    top = sorted(scored, key=lambda x: x[0], reverse=True)[:n]
+    return ' '.join(s for _, _, s in sorted(top, key=lambda x: x[1]))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_article_summary(url: str, max_sentences: int = 3) -> str:
+    """기사 URL 본문을 받아 추출 요약(영문). 실패 시 빈 문자열. 1h 캐시."""
+    if not url:
+        return ''
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=8, verify=False, allow_redirects=True)
+        if resp.status_code != 200:
+            return ''
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        for tag in soup(['script', 'style', 'noscript', 'header', 'footer', 'nav', 'aside', 'form']):
+            tag.decompose()
+        paras = [p.get_text(' ', strip=True) for p in soup.find_all('p')]
+        text = re.sub(r'\s+', ' ', ' '.join(p for p in paras if len(p) > 40)).strip()
+        if len(text) < 120:
+            return ''
+        return _extractive_summary(text, max_sentences)
+    except Exception:
+        return ''
+
+
+def _sentiment_badge(score: float) -> str:
+    """FinBERT 점수(-1~1)를 색상 배지 HTML 로."""
+    if score > 0.05:
+        bg, label = 'rgba(46,134,222,0.18)', f'🔵 긍정 {score:+.2f}'
+        color = '#1e6fd0'
+    elif score < -0.05:
+        bg, label = 'rgba(231,76,60,0.18)', f'🔴 부정 {score:+.2f}'
+        color = '#c0392b'
+    else:
+        bg, label = 'rgba(149,165,166,0.18)', f'⚪ 중립 {score:+.2f}'
+        color = '#7f8c8d'
+    return (f"<span style='background:{bg};color:{color};padding:1px 8px;border-radius:10px;"
+            f"font-size:0.78em;font-weight:600;'>{label}</span>")
+
+
+def _render_news_block(query: str, with_summary: bool = True):
+    """뉴스 수집 + 한글 번역 + (본문 요약) + FinBERT 감성 렌더링(공통)."""
+    with st.spinner("뉴스 수집·번역·감성 분석 중..."):
+        news = fetch_stock_news(query, max_items=5)
+        analyzer = load_analyzer()
+        items = []
+        for n in news:
+            title_en = n.get('title', '')
+            summary_en = fetch_article_summary(n.get('link', '')) if with_summary else ''
+            sent = analyzer.analyze_chunk(f"{title_en}. {summary_en}"[:500]) if analyzer else 0.0
+            items.append({**n, 'title_en': title_en, 'summary_en': summary_en, 'sent': sent})
+
+    if not items:
         st.info("관련 뉴스를 찾지 못했습니다.")
         return
-    for n in news:
-        title_en = n.get('title', '')
-        title_ko = _translate_ko(title_en)
-        meta = " · ".join([x for x in [n.get('source', ''), n.get('published', '')] if x])
-        link = n.get('link', '')
+
+    # 종합 감성 요약
+    scores = [it['sent'] for it in items]
+    avg = sum(scores) / len(scores) if scores else 0.0
+    pos = sum(1 for s in scores if s > 0.05)
+    neg = sum(1 for s in scores if s < -0.05)
+    neu = len(scores) - pos - neg
+    tone = "긍정 우위" if avg > 0.05 else ("부정 우위" if avg < -0.05 else "중립")
+    cc = st.columns([1, 1, 2])
+    cc[0].metric("뉴스 평균 감성", f"{avg:+.2f}")
+    cc[1].metric("긍/중/부", f"{pos} / {neu} / {neg}")
+    cc[2].metric("종합 톤", tone)
+    st.caption("FinBERT(금융 특화 모델) 기반 감성 점수 −1(부정)~+1(긍정) · 기사 본문은 빈도 기반 추출 요약 후 번역")
+    st.markdown("")
+
+    for it in items:
+        title_ko = _translate_ko(it['title_en'])
+        summary_ko = _translate_ko(it['summary_en']) if it['summary_en'] else ''
+        meta = " · ".join([x for x in [it.get('source', ''), it.get('published', '')] if x])
+        link = it.get('link', '')
         st.markdown(
-            f"**[{title_ko}]({link})**  \n"
-            f"<span style='color:#999;font-size:0.85em;'>{title_en}</span>  \n"
-            f"<span style='color:#bbb;font-size:0.8em;'>{meta}</span>",
+            f"**[{title_ko}]({link})** &nbsp; {_sentiment_badge(it['sent'])}  \n"
+            f"<span style='color:#999;font-size:0.82em;'>{it['title_en']}</span>",
             unsafe_allow_html=True)
-        st.write("")
+        if summary_ko:
+            st.markdown(f"<div style='color:#444;font-size:0.9em;margin:2px 0 2px 4px;'>📄 {summary_ko}</div>",
+                        unsafe_allow_html=True)
+        if meta:
+            st.markdown(f"<span style='color:#bbb;font-size:0.78em;'>{meta}</span>", unsafe_allow_html=True)
+        st.markdown("---")
 
 
 # ======================================================
@@ -2353,12 +2409,7 @@ def _render_snapshot_tables(snapshot: dict):
         num_cols = [c for c in ['1D', '1W', '1M', 'YTD'] if c in sdf.columns]
         styled = sdf.style.format({c: '{:+.2f}' for c in num_cols}, na_rep='N/A')
         for c in num_cols:
-            vals = pd.to_numeric(sdf[c], errors='coerce')
-            if vals.notna().any():
-                styled = styled.background_gradient(
-                    subset=[c], cmap=cmap,
-                    vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3,
-                )
+            styled = _grad(styled, c, sdf[c], cmap)
         st.dataframe(styled, use_container_width=True, hide_index=True,
                      height=min(420, 40 + len(sdf) * 35))
 
@@ -2439,27 +2490,23 @@ def show_ai_briefing():
 
 
 # ======================================================
-# Page 5: 시장 국면 & 모멘텀 (Regime Cockpit)
-#  - 변동성(VIX)·미 국채 금리·시장 폭(Breadth)·추세 모멘텀을 한 화면에 모은
-#    ETF 포트폴리오 운용자용 리스크 점검 대시보드.
+# Page 5: 시장 폭 & 모멘텀 (Breadth & Momentum)
+#  - 이동평균 상회 비율(Breadth) + 자산별 추세·모멘텀.
+#  - 규칙기반 '국면 판정'은 오해 소지가 있어 제거. 거시 국면 지표/코멘트는 거시·금리 페이지로 이관.
 # ======================================================
-def show_regime():
-    st.markdown(f'<h1 style="color: {TITLE_COLOR};">📡 시장 국면 & 모멘텀</h1>', unsafe_allow_html=True)
-    st.caption("변동성(VIX)·미 국채 금리·시장 폭(Breadth)·추세 모멘텀을 한 화면에서 점검합니다. (데이터: Yahoo Finance, 무료)")
+def show_breadth_momentum():
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🚦 시장 폭 & 모멘텀</h1>', unsafe_allow_html=True)
+    st.caption("추적 ETF 유니버스의 이동평균 상회 비율(Breadth)과 자산별 추세·모멘텀을 점검합니다. (데이터: Yahoo Finance, 무료) "
+               "※ 금리·VIX 등 거시 국면 지표와 종합 코멘트는 '🌐 거시·금리' 페이지에서 확인하세요.")
 
-    run = st.button("📡 국면 점검 실행", type="primary", key="regime_run")
-    if not (run or st.session_state.get('regime_loaded')):
-        st.info("'📡 국면 점검 실행' 버튼을 누르면 변동성·금리·시장 폭·모멘텀을 한 번에 점검합니다.")
+    run = st.button("🚦 점검 실행", type="primary", key="bm_run")
+    if not (run or st.session_state.get('bm_loaded')):
+        st.info("'🚦 점검 실행' 버튼을 누르면 시장 폭과 추세·모멘텀을 점검합니다.")
         return
 
-    st.session_state['regime_loaded'] = True
+    st.session_state['bm_loaded'] = True
     today = datetime.now().date()
-    today_str = today.strftime('%Y-%m-%d')
 
-    with st.spinner("국면 지표 수집 중... (VIX·금리)"):
-        reg = fetch_regime_indicators(today_str)
-
-    # 유니버스: 지역 주식 + 섹터 + 스타일
     universe = {}
     universe.update(STOCK_ETFS)
     universe.update(SECTOR_ETFS)
@@ -2467,108 +2514,180 @@ def show_regime():
     with st.spinner("자산 시계열 수집 중..."):
         prices = download_close_prices(list(universe.values()),
                                        today - timedelta(days=420), today + timedelta(days=1))
-    if prices is not None and not prices.empty:
-        keep = [t for t in universe.values() if t in prices.columns]
-        prices = prices.ffill()[keep]
-
-    # ---- 핵심 국면 지표 ----
-    st.markdown(f'<h3 style="color: {TITLE_COLOR};">🌡️ 핵심 국면 지표</h3>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-
-    vix, vix_chg = reg.get('vix'), reg.get('vix_chg')
-    if vix is not None:
-        regime_lbl = ('낮음(안정)' if vix < 15 else '보통' if vix < 20
-                      else '높음(경계)' if vix < 30 else '매우 높음(스트레스)')
-        c1.metric("VIX (변동성)", f"{vix:.1f}",
-                  f"{vix_chg:+.1f}" if vix_chg is not None else None, delta_color="inverse")
-        c1.caption(f"국면: {regime_lbl}")
-    else:
-        c1.metric("VIX (변동성)", "N/A")
-
-    t10, t10c = reg.get('us10y'), reg.get('us10y_chg')
-    if t10 is not None:
-        c2.metric("미 국채 10Y", f"{t10:.2f}%",
-                  f"{t10c * 100:+.0f}bp" if t10c is not None else None, delta_color="off")
-    else:
-        c2.metric("미 국채 10Y", "N/A")
-
-    t3 = reg.get('us3m')
-    c3.metric("미 단기 (3M)", f"{t3:.2f}%" if t3 is not None else "N/A")
-
-    slope = reg.get('slope_10y_3m')
-    if slope is not None:
-        c4.metric("장단기차 (10Y-3M)", f"{slope:+.2f}%p", "역전" if slope < 0 else None,
-                  delta_color="inverse")
-        c4.caption("⚠️ 역전 — 경기둔화 경계" if slope < 0 else "우상향(정상)")
-    else:
-        c4.metric("장단기차 (10Y-3M)", "N/A")
-
-    if prices is not None and not prices.empty:
-        # ---- 시장 폭 (Breadth) ----
-        br = compute_breadth(prices)
-        st.markdown("---")
-        st.markdown(f'<h3 style="color: {TITLE_COLOR};">📈 시장 폭 (Breadth)</h3>', unsafe_allow_html=True)
-        st.caption("추적 ETF 중 이동평균선을 상회하는 비율 — 높을수록 상승 추세가 광범위함")
-        b1, b2 = st.columns(2)
-        a50, a200 = br.get('above_50'), br.get('above_200')
-        if a50 is not None:
-            b1.metric(f"50일선 상회  ({br['count_50']}/{br['n50']})", f"{a50:.0f}%")
-            b1.progress(min(1.0, a50 / 100))
-        if a200 is not None:
-            b2.metric(f"200일선 상회  ({br['count_200']}/{br['n200']})", f"{a200:.0f}%")
-            b2.progress(min(1.0, a200 / 100))
-
-        # ---- 추세·모멘텀 점검 ----
-        st.markdown("---")
-        st.markdown(f'<h3 style="color: {TITLE_COLOR};">🚦 추세·모멘텀 점검</h3>', unsafe_allow_html=True)
-        st.caption("강세=현재가가 50·200일선 위 · 약세=둘 다 아래 · 혼조=혼재 / RSI>70 과매수·<30 과매도")
-        mom = compute_momentum_table(universe, prices)
-        if not mom.empty:
-            num_fmt = {'현재가': '{:.2f}', 'vs50MA(%)': '{:+.2f}', 'vs200MA(%)': '{:+.2f}',
-                       'RSI(14)': '{:.1f}', '1M(%)': '{:+.2f}', '52주고점대비(%)': '{:+.2f}'}
-            styled = mom.style.format(num_fmt, na_rep='N/A')
-            cmap = create_transparent_YlOrBr_cmap(alpha=0.4)
-            for col in ['vs50MA(%)', 'vs200MA(%)', '1M(%)', '52주고점대비(%)']:
-                vals = pd.to_numeric(mom[col], errors='coerce')
-                if vals.notna().any():
-                    styled = styled.background_gradient(
-                        subset=[col], cmap=cmap,
-                        vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3)
-
-            def _rsi_color(v):
-                if pd.isna(v):
-                    return ''
-                if v >= 70:
-                    return 'background-color: rgba(231,76,60,0.25)'
-                if v <= 30:
-                    return 'background-color: rgba(46,134,222,0.25)'
-                return ''
-
-            def _trend_color(v):
-                return {'강세': 'color:#1e8e3e; font-weight:600',
-                        '약세': 'color:#e74c3c; font-weight:600',
-                        '혼조': 'color:#b08900'}.get(v, '')
-
-            styled = styled.map(_rsi_color, subset=['RSI(14)'])
-            styled = styled.map(_trend_color, subset=['추세'])
-            st.dataframe(styled, use_container_width=True, hide_index=True,
-                         height=min(760, 45 + len(mom) * 35))
-    else:
+    if prices is None or prices.empty:
         st.warning("자산 시계열을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        return
+    keep = [t for t in universe.values() if t in prices.columns]
+    prices = prices.ffill()[keep]
 
-    # ---- 국면 요약 ----
+    # ---- 시장 폭 (Breadth) ----
+    br = compute_breadth(prices)
+    st.markdown(f'<h3 style="color: {TITLE_COLOR};">📈 시장 폭 (Breadth)</h3>', unsafe_allow_html=True)
+    st.caption("추적 ETF 중 이동평균선을 상회하는 비율 — 높을수록 상승 추세가 광범위함(시장 전반 건강도)")
+    b1, b2 = st.columns(2)
+    a50, a200 = br.get('above_50'), br.get('above_200')
+    if a50 is not None:
+        b1.metric(f"50일선 상회  ({br['count_50']}/{br['n50']})", f"{a50:.0f}%")
+        b1.progress(min(1.0, a50 / 100))
+    if a200 is not None:
+        b2.metric(f"200일선 상회  ({br['count_200']}/{br['n200']})", f"{a200:.0f}%")
+        b2.progress(min(1.0, a200 / 100))
+
+    # 그룹별(지역/섹터/스타일) 200일선 상회 비율 — 어디가 강한지
+    seg_rows = []
+    for seg_name, seg_map in [('지역 주식', STOCK_ETFS), ('미국 섹터', SECTOR_ETFS), ('스타일', STYLE_ETFS)]:
+        sub = prices[[t for t in seg_map.values() if t in prices.columns]]
+        if not sub.empty:
+            sb = compute_breadth(sub)
+            seg_rows.append({'그룹': seg_name,
+                             '50일선 상회(%)': round(sb['above_50'], 0) if sb['above_50'] is not None else None,
+                             '200일선 상회(%)': round(sb['above_200'], 0) if sb['above_200'] is not None else None})
+    if seg_rows:
+        seg_df = pd.DataFrame(seg_rows)
+        cmap = create_transparent_YlOrBr_cmap(0.4)
+        styled_seg = seg_df.style.format({'50일선 상회(%)': '{:.0f}', '200일선 상회(%)': '{:.0f}'}, na_rep='N/A')
+        for c in ['50일선 상회(%)', '200일선 상회(%)']:
+            styled_seg = _grad(styled_seg, c, seg_df[c], cmap, vmin=0, vmax=100)
+        st.dataframe(styled_seg, use_container_width=True, hide_index=True)
+
+    # ---- 추세·모멘텀 점검 ----
     st.markdown("---")
-    st.markdown(f'<h3 style="color: {TITLE_COLOR};">🧭 국면 요약</h3>', unsafe_allow_html=True)
-    st.markdown(_regime_comment(reg, prices))
+    st.markdown(f'<h3 style="color: {TITLE_COLOR};">🚦 추세·모멘텀 점검</h3>', unsafe_allow_html=True)
+    st.caption("강세=현재가가 50·200일선 위 · 약세=둘 다 아래 · 혼조=혼재 / RSI>70 과매수·<30 과매도")
+    mom = compute_momentum_table(universe, prices)
+    if not mom.empty:
+        num_fmt = {'현재가': '{:.2f}', 'vs50MA(%)': '{:+.2f}', 'vs200MA(%)': '{:+.2f}',
+                   'RSI(14)': '{:.1f}', '1M(%)': '{:+.2f}', '52주고점대비(%)': '{:+.2f}'}
+        styled = mom.style.format(num_fmt, na_rep='N/A')
+        cmap = create_transparent_YlOrBr_cmap(alpha=0.4)
+        for col in ['vs50MA(%)', 'vs200MA(%)', '1M(%)', '52주고점대비(%)']:
+            styled = _grad(styled, col, mom[col], cmap)
+
+        def _rsi_color(v):
+            if pd.isna(v):
+                return ''
+            if v >= 70:
+                return 'background-color: rgba(231,76,60,0.25)'
+            if v <= 30:
+                return 'background-color: rgba(46,134,222,0.25)'
+            return ''
+
+        def _trend_color(v):
+            return {'강세': 'color:#1e8e3e; font-weight:600',
+                    '약세': 'color:#e74c3c; font-weight:600',
+                    '혼조': 'color:#b08900'}.get(v, '')
+
+        styled = styled.map(_rsi_color, subset=['RSI(14)'])
+        styled = styled.map(_trend_color, subset=['추세'])
+        st.dataframe(styled, use_container_width=True, hide_index=True,
+                     height=min(760, 45 + len(mom) * 35))
+
+        # 추세 분포 요약
+        vc = mom['추세'].value_counts()
+        bull, bear, mixed = int(vc.get('강세', 0)), int(vc.get('약세', 0)), int(vc.get('혼조', 0))
+        st.caption(f"추세 분포 — 강세 {bull} · 혼조 {mixed} · 약세 {bear} (총 {len(mom)}개 자산)")
 
 
 # ======================================================
 # Page 6: 거시·금리 (Macro Cockpit) — FRED/FDR + yfinance
 #  - 일드커브·시장/정책 금리·유가/원자재·달러·신용스프레드·기대인플레.
 # ======================================================
+def _macro_small_multiples(series_map):
+    """혼합 스케일/단위 지표를 각자 자체 축의 미니 차트 그리드로(급등 지표가 다른 지표를 가리는 문제 해결)."""
+    valid = {k: v for k, v in series_map.items() if v is not None and not v.empty}
+    if not valid:
+        return
+    keys = list(valid.keys())
+    ncols = 3 if len(keys) > 4 else 2
+    for i in range(0, len(keys), ncols):
+        cols = st.columns(ncols)
+        for j in range(ncols):
+            if i + j < len(keys):
+                k = keys[i + j]
+                s = valid[k]
+                chg = (s.iloc[-1] / s.iloc[0] - 1) * 100 if s.iloc[0] else 0
+                line_color = '#1e8e3e' if chg >= 0 else '#e74c3c'
+                fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode='lines',
+                                           line=dict(color=line_color, width=1.8), fill='tozeroy',
+                                           fillcolor='rgba(0,0,0,0.03)'))
+                fig.update_layout(title=dict(text=k, font=dict(size=12)), template='plotly_white',
+                                  height=200, margin=dict(t=34, b=20, l=34, r=8), showlegend=False)
+                cols[j].plotly_chart(fig, use_container_width=True)
+
+
+def _macro_overlay_levels(series_map, ytitle='수익률(%)'):
+    """동일 단위(금리 등) 지표를 실제 레벨 그대로 한 축에 겹쳐 표시(곡선 비교용)."""
+    valid = {k: v for k, v in series_map.items() if v is not None and not v.empty}
+    if not valid:
+        return
+    fig = go.Figure()
+    for k, s in valid.items():
+        fig.add_trace(go.Scatter(x=s.index, y=s.values, mode='lines', name=k))
+    fig.update_layout(template='plotly_white', height=330, yaxis_title=ytitle,
+                      margin=dict(t=20, b=30, l=40, r=20), legend=dict(orientation='h', y=-0.25))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _mval(mdf, label, col='현재'):
+    try:
+        r = mdf[mdf['지표'] == label]
+        v = r[col].iloc[0] if len(r) else None
+        return float(v) if pd.notna(v) else None
+    except Exception:
+        return None
+
+
+def _macro_comment(yc, gd) -> str:
+    """매크로 종합 코멘트(규칙 기반·데이터 인용, 블랙박스 단정 대신 관찰+체크포인트)."""
+    comm_df = gd.get('원자재', (pd.DataFrame(),))[0]
+    other_df = gd.get('기타', (pd.DataFrame(),))[0]
+    parts = []
+    cur = {l: v for l, v in zip(yc['labels'], yc['current']) if v is not None}
+    if '10Y' in cur and '2Y' in cur:
+        sp = cur['10Y'] - cur['2Y']
+        if sp < 0:
+            parts.append(f"미 국채 10Y-2Y 금리차가 {sp:+.2f}%p로 **역전** 상태입니다. 과거 경기침체에 선행한 신호로, 경기 둔화 가능성을 함께 모니터링할 필요가 있습니다.")
+        elif sp < 0.5:
+            parts.append(f"10Y-2Y 금리차가 {sp:+.2f}%p로 평탄(flat)합니다. 역전 해소 초기이거나 정책 전환 국면일 수 있습니다.")
+        else:
+            parts.append(f"10Y-2Y 금리차가 {sp:+.2f}%p로 우상향(정상) 구간입니다.")
+    vix = _mval(other_df, 'VIX')
+    if vix is not None:
+        if vix < 15:
+            parts.append(f"VIX는 {vix:.1f}로 낮아 변동성이 안정적이며 위험선호에 우호적입니다.")
+        elif vix < 20:
+            parts.append(f"VIX는 {vix:.1f}로 보통 수준입니다.")
+        elif vix < 30:
+            parts.append(f"VIX는 {vix:.1f}로 높아져 시장 경계감이 커진 상태입니다.")
+        else:
+            parts.append(f"VIX는 {vix:.1f}로 매우 높아 스트레스 국면 가능성이 있습니다.")
+    hy = _mval(other_df, 'HY 스프레드(OAS)')
+    if hy is not None:
+        if hy < 3.5:
+            parts.append(f"하이일드 스프레드는 {hy:.2f}%로 타이트해 신용시장은 위험선호적입니다.")
+        elif hy < 5:
+            parts.append(f"하이일드 스프레드는 {hy:.2f}%로 중립 수준입니다.")
+        else:
+            parts.append(f"하이일드 스프레드가 {hy:.2f}%로 확대되어 신용 리스크 경계가 필요합니다.")
+    bei, real = _mval(other_df, '10Y 기대인플레'), _mval(other_df, '10Y 실질금리')
+    if bei is not None and real is not None:
+        parts.append(f"10년 기대인플레 {bei:.2f}% · 실질금리 {real:.2f}%로, 명목금리는 약 {bei + real:.2f}% 수준에서 형성되어 있습니다.")
+    elif bei is not None:
+        parts.append(f"10년 기대인플레이션은 {bei:.2f}%입니다.")
+    wti_m = _mval(comm_df, 'WTI 원유', '1M Δ')
+    if wti_m is not None:
+        parts.append(f"WTI 원유는 최근 1개월 {wti_m:+.1f}%로 {'상승' if wti_m > 0 else '하락'}했습니다.")
+    dxy_m = _mval(other_df, '달러지수(DXY)', '1M Δ')
+    if dxy_m is not None:
+        parts.append(f"달러지수는 1개월 {dxy_m:+.1f}%로 달러가 {'강세' if dxy_m > 0 else '약세'}입니다.")
+    if not parts:
+        return "_지표 데이터가 부족하여 종합 코멘트를 생성할 수 없습니다._"
+    return " ".join(parts)
+
+
 def show_macro():
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">🌐 거시·금리 지표</h1>', unsafe_allow_html=True)
-    st.caption("미 국채 일드커브·시장/정책 금리·유가·원자재·달러·신용스프레드·기대인플레를 한 화면에서 점검합니다. (데이터: FRED·Yahoo, 무료)")
+    st.caption("미 국채 일드커브·시장/정책 금리·유가·원자재·달러·신용스프레드·기대/실질금리를 한 화면에서 점검합니다. (데이터: FRED·Yahoo, 무료)")
 
     if not _HAS_FDR:
         st.warning("`finance-datareader` 미설치로 FRED 기반 지표(금리·유가·스프레드 등)가 비활성화됩니다. "
@@ -2605,35 +2724,34 @@ def show_macro():
         st.info("일드커브 데이터를 불러오지 못했습니다. (finance-datareader 설치 및 네트워크 확인)")
 
     # ---- 그룹별 표 + 추세 ----
+    group_data = {}
     for gname, emoji in [('금리', '💵'), ('원자재', '🛢️'), ('기타', '📊')]:
         st.markdown("---")
         st.markdown(f'<h3 style="color:{TITLE_COLOR};">{emoji} {gname}</h3>', unsafe_allow_html=True)
         with st.spinner(f"{gname} 지표 수집 중..."):
             mdf, series_map = fetch_macro_table(gname, asof)
+        group_data[gname] = (mdf, series_map)
         if mdf.empty or mdf['현재'].isna().all():
             st.info(f"{gname} 데이터를 불러오지 못했습니다.")
             continue
-        st.caption("금리·스프레드·기대인플레의 Δ는 절대 변화(%p), 가격·지수의 Δ는 % 변화입니다.")
+        st.caption("금리·스프레드·기대/실질금리의 Δ는 절대 변화(%p), 가격·지수의 Δ는 % 변화입니다.")
         cmap = create_transparent_YlOrBr_cmap(0.4)
         styled = mdf.style.format({'현재': '{:.2f}', '1W Δ': '{:+.2f}', '1M Δ': '{:+.2f}'}, na_rep='N/A')
         for c in ['1W Δ', '1M Δ']:
-            vals = pd.to_numeric(mdf[c], errors='coerce')
-            if vals.notna().any():
-                styled = styled.background_gradient(subset=[c], cmap=cmap,
-                    vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3)
+            styled = _grad(styled, c, mdf[c], cmap)
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
-        valid = {k: v for k, v in series_map.items() if v is not None and not v.empty}
-        if valid:
-            fig = go.Figure()
-            for k, sv in valid.items():
-                norm = sv / sv.iloc[0] * 100
-                fig.add_trace(go.Scatter(x=norm.index, y=norm.values, name=k, mode='lines'))
-            fig.update_layout(template='plotly_white', height=300, yaxis_title='정규화(시작=100)',
-                              margin=dict(t=20, b=30, l=40, r=20), legend=dict(orientation='h', y=-0.25))
-            st.plotly_chart(fig, use_container_width=True)
+        # 금리는 동일 단위라 레벨 겹침(곡선 비교), 원자재·기타는 단위가 달라 미니차트 그리드(급등 지표 가림 방지)
+        if gname == '금리':
+            _macro_overlay_levels(series_map, '수익률(%)')
+        else:
+            _macro_small_multiples(series_map)
 
-    st.caption(f"기준: {datetime.now().strftime('%Y-%m-%d %H:%M')} · 출처: FRED(St. Louis Fed) · Yahoo Finance")
+    # ---- 종합 코멘트 ----
+    st.markdown("---")
+    st.markdown(f'<h3 style="color:{TITLE_COLOR};">🧭 매크로 종합 코멘트</h3>', unsafe_allow_html=True)
+    st.markdown(_macro_comment(yc, group_data))
+    st.caption(f"기준: {datetime.now().strftime('%Y-%m-%d %H:%M')} · 출처: FRED(St. Louis Fed) · Yahoo Finance · 본 코멘트는 지표 기반 자동 분석입니다.")
 
 
 # ======================================================
@@ -2733,10 +2851,7 @@ def show_deep_analysis():
         cmap = create_transparent_YlOrBr_cmap(0.4)
         styled = hdf.style.format({'비중(%)': '{:.2f}', '기간수익률(%)': '{:+.2f}', '기여도(%p)': '{:+.3f}'}, na_rep='N/A')
         for c in ['기간수익률(%)', '기여도(%p)']:
-            vals = pd.to_numeric(hdf[c], errors='coerce')
-            if vals.notna().any():
-                styled = styled.background_gradient(subset=[c], cmap=cmap,
-                    vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3)
+            styled = _grad(styled, c, hdf[c], cmap)
         st.dataframe(styled, use_container_width=True, hide_index=True, height=min(430, 45 + len(hdf) * 35))
 
         plot_df = hdf.dropna(subset=['기여도(%p)'])
@@ -2785,7 +2900,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
-        ["📊 시장 성과", "🌐 거시·금리", "📡 시장 국면", "🔬 심층분석", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
+        ["📊 시장 성과", "🌐 거시·금리", "🚦 시장 폭·모멘텀", "🔬 심층분석", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
         key="nav_page",
     )
     st.markdown("---")
@@ -2819,8 +2934,8 @@ if page == "📊 시장 성과":
     show_page1()
 elif page == "🌐 거시·금리":
     show_macro()
-elif page == "📡 시장 국면":
-    show_regime()
+elif page == "🚦 시장 폭·모멘텀":
+    show_breadth_momentum()
 elif page == "🔬 심층분석":
     show_deep_analysis()
 elif page == "🧠 AI 브리핑":
