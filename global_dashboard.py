@@ -20,6 +20,19 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+# ---- 선택적 라이브러리 (미설치 시에도 기본 기능은 동작) ----
+try:
+    import FinanceDataReader as fdr
+    _HAS_FDR = True
+except Exception:
+    _HAS_FDR = False
+
+try:
+    from deep_translator import GoogleTranslator
+    _HAS_TRANSLATOR = True
+except Exception:
+    _HAS_TRANSLATOR = False
+
 warnings.filterwarnings('ignore')
 ssl._create_default_https_context = ssl._create_unverified_context
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -369,17 +382,23 @@ class ETFCollector:
 
     def _try_yfinance(self, ticker: str):
         try:
-            df = yf.Ticker(ticker).fund_top_holdings
+            t = yf.Ticker(ticker, session=self.cf_session) if self.cf_session else yf.Ticker(ticker)
+            df = t.funds_data.top_holdings
             if df is None or df.empty:
                 return []
+            df = df.reset_index()
+            cols = {c.lower(): c for c in df.columns}
+            sym_c = cols.get('symbol') or df.columns[0]
+            name_c = cols.get('name') or cols.get('holding name') or sym_c
+            pct_c = cols.get('holding percent') or cols.get('% assets')
             result = []
             for _, row in df.head(10).iterrows():
-                sym = str(row.get('Symbol', row.get('symbol', ''))).strip()
-                name = str(row.get('Holding Name', row.get('holdingName', sym))).strip()
-                pct = float(row.get('% Assets', row.get('holdingPercent', 0)) or 0)
-                if pct < 1:
+                sym = str(row.get(sym_c, '')).strip()
+                name = str(row.get(name_c, sym)).strip()
+                pct = float(row.get(pct_c, 0) or 0) if pct_c else 0.0
+                if 0 < pct < 1:  # 비율(0.07) → 퍼센트(7.0)
                     pct *= 100
-                if sym and sym != 'nan':
+                if sym and sym.lower() != 'nan':
                     result.append({'ticker': sym, 'name': name, 'weight': round(pct, 2)})
             return result
         except Exception:
@@ -1288,6 +1307,20 @@ def render_comprehensive_chart(label2t, chart_key):
                                      f"사용자 정의 기간 - {start_date_custom} ~ {end_date_custom}")
 
 
+def _chart_grid(assets, prices_data, plot_fn):
+    """자산 리스트를 2열 그리드로 차트 렌더링(탭별 중복 루프 제거용 공통 헬퍼)."""
+    for i in range(0, len(assets), 2):
+        cols = st.columns(2)
+        for j in range(2):
+            if i + j < len(assets):
+                a = assets[i + j]
+                try:
+                    with cols[j]:
+                        st.plotly_chart(plot_fn(prices_data[[a]], a), use_container_width=True)
+                except Exception:
+                    cols[j].error(f"{a} 실패")
+
+
 def display_chart_analysis(label2t, start_date, end_date, period_label):
     
     
@@ -1351,27 +1384,7 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
     # Tab 1: Monthly Returns (+Distribution of Monthly Returns)
     with tab_mr:
         st.caption("각 자산의 월별 수익률")
-        for i in range(0, len(assets), 2):
-            cols = st.columns(2)
-
-            asset1 = assets[i]
-            asset1_data = prices_data[[asset1]]
-            try:
-                with cols[0]:
-                    fig = plot_monthly_returns(asset1_data, asset1)
-                    st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                cols[0].error(f"{asset1} 실패")
-
-            if i + 1 < len(assets):
-                asset2 = assets[i + 1]
-                asset2_data = prices_data[[asset2]]
-                try:
-                    with cols[1]:
-                        fig = plot_monthly_returns(asset2_data, asset2)
-                        st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    cols[1].error(f"{asset2} 실패")
+        _chart_grid(assets, prices_data, plot_monthly_returns)
 
         # Distribution of Monthly Returns (Monthly Returns 탭에서만 표시)
         st.markdown("---")
@@ -1410,78 +1423,17 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
     # Tab 2: Rolling Volatility
     with tab_rv:
         st.caption("6개월 Rolling 변동성")
-        for i in range(0, len(assets), 2):
-            cols = st.columns(2)
-
-            asset1 = assets[i]
-            asset1_data = prices_data[[asset1]]
-            try:
-                with cols[0]:
-                    fig = plot_rolling_volatility_visual(asset1_data, asset1)
-                    st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                cols[0].error(f"{asset1} 실패")
-
-            if i + 1 < len(assets):
-                asset2 = assets[i + 1]
-                asset2_data = prices_data[[asset2]]
-                try:
-                    with cols[1]:
-                        fig = plot_rolling_volatility_visual(asset2_data, asset2)
-                        st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    cols[1].error(f"{asset2} 실패")
+        _chart_grid(assets, prices_data, plot_rolling_volatility_visual)
 
     # Tab 3: Rolling Sharpe
     with tab_rs:
         st.caption("6개월 Rolling Sharpe Ratio")
-        for i in range(0, len(assets), 2):
-            cols = st.columns(2)
-
-            asset1 = assets[i]
-            asset1_data = prices_data[[asset1]]
-            try:
-                with cols[0]:
-                    fig = plot_rolling_sharpe(asset1_data, asset1)
-                    st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                cols[0].error(f"{asset1} 실패")
-
-            if i + 1 < len(assets):
-                asset2 = assets[i + 1]
-                asset2_data = prices_data[[asset2]]
-                try:
-                    with cols[1]:
-                        fig = plot_rolling_sharpe(asset2_data, asset2)
-                        st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    cols[1].error(f"{asset2} 실패")
+        _chart_grid(assets, prices_data, plot_rolling_sharpe)
 
     # Tab 4: Maximum Drawdown
     with tab_md:
         st.caption("Maximum Drawdown")
-        
-        for i in range(0, len(assets), 2):
-            cols = st.columns(2)
-
-            asset1 = assets[i]
-            asset1_data = prices_data[[asset1]]
-            try:
-                with cols[0]:
-                    fig = plot_maximum_drawdown(asset1_data, asset1)
-                    st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                cols[0].error(f"{asset1} 실패")
-
-            if i + 1 < len(assets):
-                asset2 = assets[i + 1]
-                asset2_data = prices_data[[asset2]]
-                try:
-                    with cols[1]:
-                        fig = plot_maximum_drawdown(asset2_data, asset2)
-                        st.plotly_chart(fig, use_container_width=True)
-                except Exception as e:
-                    cols[1].error(f"{asset2} 실패")
+        _chart_grid(assets, prices_data, plot_maximum_drawdown)
 
     # Tab 5: 상관관계 + 상대강도
     with tab_corr:
@@ -1770,6 +1722,224 @@ def show_page3():
             barmode='group', template='plotly_white', height=380,
         )
         st.plotly_chart(fig_pe, use_container_width=True)
+
+
+# ======================================================
+# 외부 데이터(FinanceDataReader/FRED) · 번역 · 뉴스 레이어
+#  - yfinance 외에 FinanceDataReader+FRED 로 금리/유가/환율/물가/신용스프레드 등
+#    매크로 지표를 무료로 수집한다.
+#  - 뉴스는 Google News RSS(feedparser, 무료) → deep-translator 로 한글 번역.
+# ======================================================
+# 매크로 시리즈 정의: 라벨 -> (소스, 심볼, 단위).  'FRED'=FRED 게이트웨이, 'YF'=yfinance
+MACRO_RATES = {
+    '미국 3M': ('FRED', 'DGS3MO', '%'),
+    '미국 2Y': ('FRED', 'DGS2', '%'),
+    '미국 5Y': ('FRED', 'DGS5', '%'),
+    '미국 10Y': ('FRED', 'DGS10', '%'),
+    '미국 30Y': ('FRED', 'DGS30', '%'),
+    '美 기준금리(상단)': ('FRED', 'DFEDTARU', '%'),
+}
+MACRO_COMMODITY = {
+    'WTI 원유': ('FRED', 'DCOILWTICO', '$/bbl'),
+    'Brent 원유': ('FRED', 'DCOILBRENTEU', '$/bbl'),
+    '천연가스(HH)': ('FRED', 'DHHNGSP', '$/MMBtu'),
+    '금(Gold)': ('YF', 'GC=F', '$/oz'),
+    '구리(Copper)': ('YF', 'HG=F', '$/lb'),
+}
+MACRO_OTHER = {
+    '달러지수(DXY)': ('YF', 'DX-Y.NYB', 'idx'),
+    'VIX': ('FRED', 'VIXCLS', 'idx'),
+    '10Y 기대인플레': ('FRED', 'T10YIE', '%'),
+    'HY 스프레드(OAS)': ('FRED', 'BAMLH0A0HYM2', '%'),
+    'IG 스프레드(OAS)': ('FRED', 'BAMLC0A0CM', '%'),
+}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fdr_series(symbol: str, start_str: str, end_str: str) -> pd.Series:
+    """FinanceDataReader 단일 시리즈(FRED 포함). 실패 시 빈 시리즈."""
+    if not _HAS_FDR:
+        return pd.Series(dtype=float)
+    try:
+        df = fdr.DataReader(symbol, start_str, end_str)
+        if df is None or len(df) == 0:
+            return pd.Series(dtype=float)
+        col = 'Close' if 'Close' in df.columns else df.columns[-1]
+        s = pd.to_numeric(df[col], errors='coerce').dropna()
+        s.index = pd.to_datetime(s.index)
+        return s
+    except Exception:
+        return pd.Series(dtype=float)
+
+
+def _yf_series(symbol: str, start_str: str, end_str: str) -> pd.Series:
+    """yfinance 단일 시리즈(Close). 실패 시 빈 시리즈."""
+    df = download_close_prices([symbol], start_str, end_str)
+    if df is None or df.empty:
+        return pd.Series(dtype=float)
+    if symbol in df.columns:
+        return df[symbol].dropna()
+    return df.iloc[:, 0].dropna()
+
+
+def _macro_value(source: str, symbol: str, start, end) -> pd.Series:
+    def _s(x):
+        try:
+            return x.strftime('%Y-%m-%d')
+        except Exception:
+            return str(x)[:10]
+    if source == 'FRED':
+        return _fdr_series(f'FRED:{symbol}', _s(start), _s(end))
+    return _yf_series(symbol, _s(start), _s(end))
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_macro_table(group_name: str, asof_str: str):
+    """매크로 그룹의 현재값/변화(1W·1M) 표와 추세 시리즈맵을 (df, series_map) 로 반환."""
+    groups = {'금리': MACRO_RATES, '원자재': MACRO_COMMODITY, '기타': MACRO_OTHER}
+    gmap = groups.get(group_name, {})
+    today = datetime.now().date()
+    start = today - timedelta(days=220)
+    end = today + timedelta(days=1)
+    rows, series_map = [], {}
+    for label, (src, sym, unit) in gmap.items():
+        s = _macro_value(src, sym, start, end)
+        series_map[label] = s
+        if s.empty:
+            rows.append({'지표': label, '현재': None, '1W Δ': None, '1M Δ': None, '단위': unit})
+            continue
+        last = float(s.iloc[-1])
+        is_rate = (unit == '%')
+        if is_rate:  # 금리/스프레드/인플레: 절대 변화(%p)
+            w = (last - float(s.iloc[-6])) if len(s) > 5 else None
+            m = (last - float(s.iloc[-22])) if len(s) > 21 else None
+        else:        # 가격/지수: % 변화
+            w = (last / float(s.iloc[-6]) - 1) * 100 if len(s) > 5 else None
+            m = (last / float(s.iloc[-22]) - 1) * 100 if len(s) > 21 else None
+        rows.append({'지표': label, '현재': round(last, 2),
+                     '1W Δ': round(w, 2) if w is not None else None,
+                     '1M Δ': round(m, 2) if m is not None else None, '단위': unit})
+    return pd.DataFrame(rows), series_map
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_yield_curve(asof_str: str) -> dict:
+    """미 국채 일드커브: 현재 / 1개월 전 / 3개월 전 (만기별 %)."""
+    today = datetime.now().date()
+    start = today - timedelta(days=140)
+    end = today + timedelta(days=1)
+    tenors = [('3M', 'DGS3MO'), ('2Y', 'DGS2'), ('5Y', 'DGS5'), ('10Y', 'DGS10'), ('30Y', 'DGS30')]
+    cur, m1, m3, labels = [], [], [], []
+    for lbl, sym in tenors:
+        s = _fdr_series(f'FRED:{sym}', start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+        labels.append(lbl)
+        if s.empty:
+            cur.append(None); m1.append(None); m3.append(None); continue
+        cur.append(float(s.iloc[-1]))
+        m1.append(float(s.iloc[-22]) if len(s) > 21 else None)
+        m3.append(float(s.iloc[-64]) if len(s) > 63 else None)
+    return {'labels': labels, 'current': cur, 'm1': m1, 'm3': m3}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _translate_ko(text: str) -> str:
+    """영문 → 한국어 (deep-translator, 무료). 실패/미설치 시 원문 반환. 24h 캐시."""
+    if not text or not _HAS_TRANSLATOR:
+        return text
+    try:
+        return GoogleTranslator(source='auto', target='ko').translate(text[:4500])
+    except Exception:
+        return text
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_stock_news(query: str, max_items: int = 6) -> list:
+    """Google News RSS(무료)로 종목 뉴스 수집 → [{title, link, source, published}]. 실패 시 yfinance 폴백."""
+    import urllib.parse
+    out = []
+    try:
+        q = urllib.parse.quote(query)
+        url = f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+        feed = feedparser.parse(url)
+        for e in feed.entries[:max_items]:
+            src = ''
+            if isinstance(e.get('source'), dict):
+                src = e['source'].get('title', '')
+            elif hasattr(e, 'source') and hasattr(e.source, 'title'):
+                src = e.source.title
+            out.append({'title': e.get('title', ''), 'link': e.get('link', ''),
+                        'source': src, 'published': e.get('published', '')[:16]})
+    except Exception:
+        pass
+    if not out:  # yfinance 뉴스 폴백 (스키마 두 종류 모두 대응)
+        try:
+            for n in (yf.Ticker(query.split()[0]).get_news(count=max_items) or []):
+                c = n.get('content', n)
+                title = c.get('title') or n.get('title', '')
+                cu = c.get('canonicalUrl') or {}
+                link = (cu.get('url', '') if isinstance(cu, dict) else '') or n.get('link', '')
+                prov = c.get('provider') or {}
+                src = prov.get('displayName', '') if isinstance(prov, dict) else n.get('publisher', '')
+                if title:
+                    out.append({'title': title, 'link': link, 'source': src,
+                                'published': str(c.get('pubDate', ''))[:16]})
+        except Exception:
+            pass
+    return out[:max_items]
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def analyze_etf_contribution(etf_ticker: str, period_days: int, asof_str: str) -> dict:
+    """ETF 상위 10개 보유종목의 기간 수익률·기여도(비중×수익률) 분석.
+    반환: {'holdings_df': df(기여도 내림차순), 'etf_ret_top10': float|None}. ETF 아니면 {}."""
+    holdings = ETFCollector().get_etf_holdings(etf_ticker)
+    if not holdings:
+        return {}
+    syms = [h['ticker'] for h in holdings]
+    today = datetime.now().date()
+    start = today - timedelta(days=period_days + 18)
+    end = today + timedelta(days=1)
+    px = download_close_prices(syms, start, end)
+    rows = []
+    for h in holdings:
+        tk = h['ticker']
+        ret = None
+        if px is not None and not px.empty and tk in px.columns:
+            s = px[tk].dropna()
+            if len(s) >= 2:
+                ref_idx = s.index[-1] - pd.Timedelta(days=period_days)
+                base = s[s.index <= ref_idx]
+                base_val = float(base.iloc[-1]) if len(base) else float(s.iloc[0])
+                ret = (float(s.iloc[-1]) / base_val - 1) * 100 if base_val else None
+        w = h.get('weight')
+        contrib = (w / 100.0) * ret if (ret is not None and w is not None) else None
+        rows.append({'종목': tk, '종목명': h.get('name', tk), '비중(%)': w,
+                     '기간수익률(%)': round(ret, 2) if ret is not None else None,
+                     '기여도(%p)': round(contrib, 3) if contrib is not None else None})
+    df = pd.DataFrame(rows)
+    etf_ret = round(float(df['기여도(%p)'].sum()), 2) if df['기여도(%p)'].notna().any() else None
+    df = df.sort_values('기여도(%p)', ascending=False, na_position='last').reset_index(drop=True)
+    return {'holdings_df': df, 'etf_ret_top10': etf_ret}
+
+
+def _render_news_block(query: str):
+    """뉴스 수집 + 한글 번역 렌더링(공통)."""
+    with st.spinner("뉴스 수집·번역 중..."):
+        news = fetch_stock_news(query, max_items=6)
+    if not news:
+        st.info("관련 뉴스를 찾지 못했습니다.")
+        return
+    for n in news:
+        title_en = n.get('title', '')
+        title_ko = _translate_ko(title_en)
+        meta = " · ".join([x for x in [n.get('source', ''), n.get('published', '')] if x])
+        link = n.get('link', '')
+        st.markdown(
+            f"**[{title_ko}]({link})**  \n"
+            f"<span style='color:#999;font-size:0.85em;'>{title_en}</span>  \n"
+            f"<span style='color:#bbb;font-size:0.8em;'>{meta}</span>",
+            unsafe_allow_html=True)
+        st.write("")
 
 
 # ======================================================
@@ -2393,6 +2563,210 @@ def show_regime():
 
 
 # ======================================================
+# Page 6: 거시·금리 (Macro Cockpit) — FRED/FDR + yfinance
+#  - 일드커브·시장/정책 금리·유가/원자재·달러·신용스프레드·기대인플레.
+# ======================================================
+def show_macro():
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🌐 거시·금리 지표</h1>', unsafe_allow_html=True)
+    st.caption("미 국채 일드커브·시장/정책 금리·유가·원자재·달러·신용스프레드·기대인플레를 한 화면에서 점검합니다. (데이터: FRED·Yahoo, 무료)")
+
+    if not _HAS_FDR:
+        st.warning("`finance-datareader` 미설치로 FRED 기반 지표(금리·유가·스프레드 등)가 비활성화됩니다. "
+                   "requirements.txt 에 `finance-datareader` 를 추가하면 전체 지표가 켜집니다.")
+
+    run = st.button("🌐 매크로 지표 불러오기", type="primary", key="macro_run")
+    if not (run or st.session_state.get('macro_loaded')):
+        st.info("'🌐 매크로 지표 불러오기' 버튼을 누르면 금리·유가·달러·신용스프레드 등을 수집합니다.")
+        return
+    st.session_state['macro_loaded'] = True
+    asof = datetime.now().strftime('%Y-%m-%d')
+
+    # ---- 일드커브 ----
+    st.markdown(f'<h3 style="color:{TITLE_COLOR};">📐 미국 국채 일드커브</h3>', unsafe_allow_html=True)
+    with st.spinner("일드커브 수집 중..."):
+        yc = fetch_yield_curve(asof)
+    if any(v is not None for v in yc['current']):
+        fig = go.Figure()
+        for key, name, dash, w in [('m3', '3개월 전', 'dot', 1.5),
+                                    ('m1', '1개월 전', 'dash', 1.5),
+                                    ('current', '현재', 'solid', 3)]:
+            fig.add_trace(go.Scatter(x=yc['labels'], y=yc[key], name=name,
+                                     mode='lines+markers', line=dict(dash=dash, width=w)))
+        fig.update_layout(template='plotly_white', height=380, yaxis_title='수익률(%)',
+                          xaxis_title='만기', margin=dict(t=30, b=40, l=40, r=20),
+                          legend=dict(orientation='h', y=-0.2))
+        st.plotly_chart(fig, use_container_width=True)
+        cur = {l: v for l, v in zip(yc['labels'], yc['current']) if v is not None}
+        if '10Y' in cur and '2Y' in cur:
+            sp = cur['10Y'] - cur['2Y']
+            (st.error if sp < 0 else st.success)(
+                f"10Y-2Y 스프레드: {sp:+.2f}%p {'→ ⚠️ 장단기 금리 역전 (경기둔화 경계 신호)' if sp < 0 else '(우상향·정상)'}")
+    else:
+        st.info("일드커브 데이터를 불러오지 못했습니다. (finance-datareader 설치 및 네트워크 확인)")
+
+    # ---- 그룹별 표 + 추세 ----
+    for gname, emoji in [('금리', '💵'), ('원자재', '🛢️'), ('기타', '📊')]:
+        st.markdown("---")
+        st.markdown(f'<h3 style="color:{TITLE_COLOR};">{emoji} {gname}</h3>', unsafe_allow_html=True)
+        with st.spinner(f"{gname} 지표 수집 중..."):
+            mdf, series_map = fetch_macro_table(gname, asof)
+        if mdf.empty or mdf['현재'].isna().all():
+            st.info(f"{gname} 데이터를 불러오지 못했습니다.")
+            continue
+        st.caption("금리·스프레드·기대인플레의 Δ는 절대 변화(%p), 가격·지수의 Δ는 % 변화입니다.")
+        cmap = create_transparent_YlOrBr_cmap(0.4)
+        styled = mdf.style.format({'현재': '{:.2f}', '1W Δ': '{:+.2f}', '1M Δ': '{:+.2f}'}, na_rep='N/A')
+        for c in ['1W Δ', '1M Δ']:
+            vals = pd.to_numeric(mdf[c], errors='coerce')
+            if vals.notna().any():
+                styled = styled.background_gradient(subset=[c], cmap=cmap,
+                    vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3)
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        valid = {k: v for k, v in series_map.items() if v is not None and not v.empty}
+        if valid:
+            fig = go.Figure()
+            for k, sv in valid.items():
+                norm = sv / sv.iloc[0] * 100
+                fig.add_trace(go.Scatter(x=norm.index, y=norm.values, name=k, mode='lines'))
+            fig.update_layout(template='plotly_white', height=300, yaxis_title='정규화(시작=100)',
+                              margin=dict(t=20, b=30, l=40, r=20), legend=dict(orientation='h', y=-0.25))
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.caption(f"기준: {datetime.now().strftime('%Y-%m-%d %H:%M')} · 출처: FRED(St. Louis Fed) · Yahoo Finance")
+
+
+# ======================================================
+# Page 7: 종목·ETF 심층분석 (Ticker key-in)
+#  - 사전 정의 리스트 밖의 어떤 티커도 입력해 분석.
+#  - ETF면 상위10 보유종목 기여도 → 최대 동인 종목 뉴스(한글 번역)까지.
+# ======================================================
+def show_deep_analysis():
+    st.markdown(f'<h1 style="color:{TITLE_COLOR};">🔬 종목·ETF 심층분석</h1>', unsafe_allow_html=True)
+    st.caption("티커를 직접 입력해 가격·모멘텀을 분석하고, ETF라면 보유종목 기여도와 핵심 동인 종목의 뉴스(한글 번역)를 확인합니다.")
+
+    c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
+    with c1:
+        ticker_in = st.text_input("티커 입력 (예: AAPL · QQQ · TSLA · ^GSPC · 005930.KS)",
+                                  value="", key="deep_ticker").strip().upper()
+    with c2:
+        period_lbl = st.selectbox("ETF 기여도 분석 기간", ["1주일", "2주일", "1개월", "3개월"],
+                                  index=0, key="deep_period")
+    period_days = {"1주일": 7, "2주일": 14, "1개월": 30, "3개월": 90}[period_lbl]
+
+    run = st.button("🔬 분석 실행", type="primary", key="deep_run")
+    if not run:
+        st.info("티커를 입력하고 '분석 실행'을 누르세요. 사전 정의 리스트에 없는 어떤 종목·지수·ETF도 분석할 수 있습니다.")
+        return
+    if not ticker_in:
+        st.warning("티커를 입력해 주세요.")
+        return
+
+    today = datetime.now().date()
+    s = None
+    with st.spinner(f"{ticker_in} 가격 수집 중..."):
+        px = download_close_prices([ticker_in], today - timedelta(days=420), today + timedelta(days=1))
+        if px is not None and not px.empty:
+            s = px[ticker_in].dropna() if ticker_in in px.columns else px.iloc[:, 0].dropna()
+        if (s is None or len(s) < 5) and _HAS_FDR:  # 한국 종목/지수 등 FDR 폴백
+            fs = _fdr_series(ticker_in, (today - timedelta(days=420)).strftime('%Y-%m-%d'),
+                             (today + timedelta(days=1)).strftime('%Y-%m-%d'))
+            if not fs.empty:
+                s = fs
+
+    if s is None or len(s) < 5:
+        st.error(f"'{ticker_in}' 가격 데이터를 찾지 못했습니다. 티커 형식을 확인해 주세요. "
+                 f"(미국: AAPL · 지수: ^GSPC · 한국: 005930.KS 또는 FDR 코드)")
+        return
+
+    fund = fetch_fundamentals(ticker_in)
+    disp_name = fund.get('shortName') or ticker_in
+    last = float(s.iloc[-1])
+
+    def _ret(n):
+        return (last / float(s.iloc[-1 - n]) - 1) * 100 if len(s) > n else None
+
+    def _ytd():
+        yr = s.index[-1].year
+        sy = s[s.index >= pd.Timestamp(year=yr, month=1, day=1)]
+        return (last / float(sy.iloc[0]) - 1) * 100 if len(sy) >= 2 else None
+
+    rsi = float(_rsi(s).iloc[-1]) if len(s) >= 15 else None
+    win = s.iloc[-252:] if len(s) >= 252 else s
+    hi, lo = float(win.max()), float(win.min())
+
+    st.markdown(f'<h2 style="color:{TITLE_COLOR};">{disp_name} '
+                f'<span style="font-size:0.6em;color:#888;">({ticker_in})</span></h2>', unsafe_allow_html=True)
+    m = st.columns(5)
+    m[0].metric("현재가", f"{last:,.2f}")
+    m[1].metric("1W", f"{_ret(5):+.2f}%" if _ret(5) is not None else "N/A")
+    m[2].metric("1M", f"{_ret(21):+.2f}%" if _ret(21) is not None else "N/A")
+    m[3].metric("YTD", f"{_ytd():+.2f}%" if _ytd() is not None else "N/A")
+    m[4].metric("RSI(14)", f"{rsi:.0f}" if rsi is not None else "N/A")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=s.index, y=s.values, mode='lines', name=ticker_in,
+                             line=dict(color='#605c4c', width=2)))
+    if len(s) >= 50:
+        fig.add_trace(go.Scatter(x=s.index, y=s.rolling(50).mean().values, name='50일선',
+                                 line=dict(color='#f0a500', dash='dash', width=1.5)))
+    if len(s) >= 200:
+        fig.add_trace(go.Scatter(x=s.index, y=s.rolling(200).mean().values, name='200일선',
+                                 line=dict(color='#e74c3c', dash='dot', width=1.5)))
+    fig.update_layout(template='plotly_white', height=380, margin=dict(t=20, b=30, l=40, r=20),
+                      legend=dict(orientation='h', y=-0.15))
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"52주 범위: {lo:,.2f} ~ {hi:,.2f} · 고점 대비 {(last / hi - 1) * 100:+.1f}%")
+
+    # ---- ETF면 보유종목 기여도 ----
+    with st.spinner("ETF 여부·보유종목 확인 중..."):
+        contrib = analyze_etf_contribution(ticker_in, period_days, today.strftime('%Y-%m-%d'))
+
+    hdf = contrib.get('holdings_df', pd.DataFrame()) if contrib else pd.DataFrame()
+    if not hdf.empty:
+        st.markdown("---")
+        st.markdown(f'<h3 style="color:{TITLE_COLOR};">🏗️ 보유종목 기여도 · 최근 {period_lbl}</h3>', unsafe_allow_html=True)
+        st.caption("기여도(%p) = 비중 × 기간수익률. 합계는 상위 10개 종목이 ETF 수익률에 기여한 근사치입니다.")
+        if contrib.get('etf_ret_top10') is not None:
+            st.metric("상위10 종목 합산 기여도", f"{contrib['etf_ret_top10']:+.2f}%p")
+
+        cmap = create_transparent_YlOrBr_cmap(0.4)
+        styled = hdf.style.format({'비중(%)': '{:.2f}', '기간수익률(%)': '{:+.2f}', '기여도(%p)': '{:+.3f}'}, na_rep='N/A')
+        for c in ['기간수익률(%)', '기여도(%p)']:
+            vals = pd.to_numeric(hdf[c], errors='coerce')
+            if vals.notna().any():
+                styled = styled.background_gradient(subset=[c], cmap=cmap,
+                    vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3)
+        st.dataframe(styled, use_container_width=True, hide_index=True, height=min(430, 45 + len(hdf) * 35))
+
+        plot_df = hdf.dropna(subset=['기여도(%p)'])
+        if not plot_df.empty:
+            colors = ['#1e8e3e' if v >= 0 else '#e74c3c' for v in plot_df['기여도(%p)']]
+            figc = go.Figure(go.Bar(x=plot_df['기여도(%p)'], y=plot_df['종목'], orientation='h',
+                                    marker_color=colors,
+                                    text=[f"{v:+.3f}" for v in plot_df['기여도(%p)']], textposition='outside'))
+            figc.update_layout(template='plotly_white', height=max(280, 40 + len(plot_df) * 32),
+                               xaxis_title='기여도(%p)', margin=dict(t=20, b=30, l=40, r=30),
+                               yaxis=dict(autorange='reversed'))
+            st.plotly_chart(figc, use_container_width=True)
+
+            # 최대 기여 종목 → 뉴스(한글)
+            pos = int(plot_df['기여도(%p)'].abs().to_numpy().argmax())
+            drv = plot_df.iloc[pos]
+            direction = "상승" if drv['기여도(%p)'] >= 0 else "하락"
+            st.markdown("---")
+            st.markdown(f'<h3 style="color:{TITLE_COLOR};">📰 핵심 동인: {drv["종목명"]} ({drv["종목"]}) — {direction} 기여 1위</h3>',
+                        unsafe_allow_html=True)
+            st.caption(f"최근 {period_lbl} 동안 {ticker_in} 가격 움직임에 가장 크게 기여한 종목입니다. 관련 뉴스플로우(한글 번역):")
+            _render_news_block(f'{drv["종목명"]} {drv["종목"]} stock')
+    else:
+        # 개별 종목/지수 → 바로 뉴스
+        st.markdown("---")
+        st.markdown(f'<h3 style="color:{TITLE_COLOR};">📰 뉴스플로우 (한글 번역)</h3>', unsafe_allow_html=True)
+        _render_news_block(f"{disp_name} {ticker_in}")
+
+
+# ======================================================
 # Main Navigation
 # ======================================================
 with st.sidebar:
@@ -2411,7 +2785,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
-        ["📊 시장 성과", "📡 시장 국면", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
+        ["📊 시장 성과", "🌐 거시·금리", "📡 시장 국면", "🔬 심층분석", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
         key="nav_page",
     )
     st.markdown("---")
@@ -2443,8 +2817,12 @@ with st.sidebar:
 
 if page == "📊 시장 성과":
     show_page1()
+elif page == "🌐 거시·금리":
+    show_macro()
 elif page == "📡 시장 국면":
     show_regime()
+elif page == "🔬 심층분석":
+    show_deep_analysis()
 elif page == "🧠 AI 브리핑":
     show_ai_briefing()
 elif page == "🤖 LLM 분석":
