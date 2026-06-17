@@ -19,3 +19,5 @@ wordcloud>=1.9.3
 openpyxl>=3.1.0
 matplotlib
 altair
+finance-datareader
+deep-translator
