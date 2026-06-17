@@ -16,9 +16,9 @@ import feedparser
 from bs4 import BeautifulSoup
 import re
 from scipy import ndimage
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from matplotlib import cm
 
 warnings.filterwarnings('ignore')
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -71,12 +71,215 @@ _HEADERS = {
 PERIOD_OPTIONS = [("6개월", 6), ("1년", 12), ("2년", 24), ("3년", 36)]
 TITLE_COLOR = "#605c4c"
 
+def _get_cmap(name: str):
+    """matplotlib 버전과 무관하게 컬러맵을 가져온다.
+    matplotlib 3.11+ 에서 cm.get_cmap 이 제거되어 AttributeError 가 나는 문제를 해결한다."""
+    try:
+        return matplotlib.colormaps[name]          # matplotlib >= 3.5 (권장)
+    except Exception:
+        pass
+    try:
+        return plt.get_cmap(name)                  # 폴백 1
+    except Exception:
+        from matplotlib import cm as _cm           # 폴백 2 (구버전)
+        return _cm.get_cmap(name)
+
+
 def create_transparent_YlOrBr_cmap(alpha=0.4):
     """YlOrBr 컬러맵에 투명도를 적용한 커스텀 컬러맵 생성"""
-    YlOrBr_cmap = cm.get_cmap('YlOrBr')
+    YlOrBr_cmap = _get_cmap('YlOrBr')
     colors = [YlOrBr_cmap(i) for i in np.linspace(0, 1, YlOrBr_cmap.N)]
     colors_with_alpha = [(r, g, b, alpha) for r, g, b, a in colors]
     return mcolors.ListedColormap(colors_with_alpha)
+
+
+# ======================================================
+# yfinance 안정화 레이어
+#  - Streamlit Cloud 공용 IP 에서 Yahoo 가 .info 호출을 봇 차단/레이트리밋 하여
+#    값이 통째로 비는(N/A) 문제를 완화한다.
+#  - (1) curl_cffi 세션으로 브라우저를 흉내내고,
+#    (2) info / fast_info / analyst_price_targets 등 여러 엔드포인트로 보강하고,
+#    (3) 결과를 캐시하여 재실행 시 재요청을 막는다.
+# ======================================================
+@st.cache_resource(show_spinner=False)
+def _get_yf_session():
+    """Yahoo 차단 완화를 위한 curl_cffi 세션(크롬 흉내). 실패하면 None."""
+    try:
+        from curl_cffi import requests as _curl
+        s = _curl.Session(impersonate="chrome")
+        try:
+            s.verify = False
+        except Exception:
+            pass
+        return s
+    except Exception:
+        return None
+
+
+def _make_ticker(sym: str):
+    """세션이 있으면 세션을 붙여 Ticker 를 생성(버전에 따라 미지원 시 자동 폴백)."""
+    sess = _get_yf_session()
+    if sess is not None:
+        try:
+            return yf.Ticker(sym, session=sess)
+        except Exception:
+            pass
+    return yf.Ticker(sym)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_fundamentals(sym: str) -> dict:
+    """단일 티커의 펀더멘털을 여러 Yahoo 엔드포인트에서 견고하게 수집한다.
+    .info 가 레이트리밋으로 비어도 fast_info / analyst_price_targets 로 보강한다.
+    (TTL 30분 캐시 → 애널리스트·밸류에이션 표가 동일 티커를 한 번만 호출)"""
+    out = {
+        'shortName': None, 'currentPrice': None, 'targetMeanPrice': None,
+        'recommendationMean': None, 'recommendationKey': None,
+        'trailingPE': None, 'forwardPE': None,
+        'trailingEps': None, 'forwardEps': None,
+    }
+    t = _make_ticker(sym)
+
+    # 1) info / get_info
+    info = {}
+    for getter in ('info', 'get_info'):
+        try:
+            attr = getattr(t, getter)
+            data = attr() if callable(attr) else attr
+            if isinstance(data, dict) and len(data) > 3:
+                info = data
+                break
+        except Exception:
+            continue
+
+    if info:
+        out['shortName'] = info.get('shortName') or info.get('longName')
+        for f in ('currentPrice', 'regularMarketPrice', 'previousClose', 'open'):
+            v = info.get(f)
+            if isinstance(v, (int, float)) and v > 0:
+                out['currentPrice'] = float(v)
+                break
+        for f in ('targetMeanPrice', 'targetMedianPrice', 'targetPrice'):
+            v = info.get(f)
+            if isinstance(v, (int, float)) and v > 0:
+                out['targetMeanPrice'] = float(v)
+                break
+        rm = info.get('recommendationMean')
+        if isinstance(rm, (int, float)):
+            out['recommendationMean'] = float(rm)
+        rk = info.get('recommendationKey')
+        if rk and str(rk).lower() != 'none':
+            out['recommendationKey'] = str(rk).capitalize()
+        v = info.get('trailingPE')
+        if isinstance(v, (int, float)) and 0 < v < 500:
+            out['trailingPE'] = float(v)
+        v = info.get('forwardPE')
+        if isinstance(v, (int, float)) and 0 < v < 500:
+            out['forwardPE'] = float(v)
+        for f in ('trailingEps', 'epsTrailingTwelveMonths'):
+            v = info.get(f)
+            if isinstance(v, (int, float)):
+                out['trailingEps'] = float(v)
+                break
+        for f in ('forwardEps', 'epsForward'):
+            v = info.get(f)
+            if isinstance(v, (int, float)):
+                out['forwardEps'] = float(v)
+                break
+
+    # 2) fast_info 로 현재가 보강(가벼운 별도 엔드포인트)
+    if out['currentPrice'] is None:
+        try:
+            fi = t.fast_info
+            for f in ('last_price', 'lastPrice', 'previous_close', 'previousClose'):
+                v = fi.get(f) if hasattr(fi, 'get') else getattr(fi, f, None)
+                if isinstance(v, (int, float)) and v > 0:
+                    out['currentPrice'] = float(v)
+                    break
+        except Exception:
+            pass
+
+    # 3) analyst_price_targets 로 목표가/현재가 보강
+    if out['targetMeanPrice'] is None or out['currentPrice'] is None:
+        try:
+            apt = t.analyst_price_targets
+            if isinstance(apt, dict):
+                if out['targetMeanPrice'] is None:
+                    for k in ('mean', 'median'):
+                        v = apt.get(k)
+                        if isinstance(v, (int, float)) and v > 0:
+                            out['targetMeanPrice'] = float(v)
+                            break
+                if out['currentPrice'] is None:
+                    v = apt.get('current')
+                    if isinstance(v, (int, float)) and v > 0:
+                        out['currentPrice'] = float(v)
+        except Exception:
+            pass
+
+    # 4) 최후의 가격 폴백: 최근 종가
+    if out['currentPrice'] is None:
+        try:
+            h = t.history(period='5d')
+            if h is not None and not h.empty:
+                out['currentPrice'] = float(h['Close'].dropna().iloc[-1])
+        except Exception:
+            pass
+
+    if not out['shortName']:
+        out['shortName'] = sym
+    return out
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _download_close_cached(tickers_tuple: tuple, start_str: str, end_str: str) -> pd.DataFrame:
+    """종가 다운로드(캐시). 날짜를 'YYYY-MM-DD' 문자열로 받아 장중 재실행에도 캐시가 적중한다."""
+    tickers = list(tickers_tuple)
+    sess = _get_yf_session()
+    try:
+        if sess is not None:
+            raw = yf.download(tickers, start=start_str, end=end_str, progress=False, session=sess)
+        else:
+            raw = yf.download(tickers, start=start_str, end=end_str, progress=False)
+    except TypeError:
+        raw = yf.download(tickers, start=start_str, end=end_str, progress=False)
+    except Exception:
+        return pd.DataFrame()
+
+    if raw is None or len(raw) == 0:
+        return pd.DataFrame()
+
+    if isinstance(raw, pd.DataFrame):
+        if isinstance(raw.columns, pd.MultiIndex):
+            lvl0 = raw.columns.get_level_values(0)
+            df = raw['Close'] if 'Close' in lvl0 else raw
+        elif 'Close' in raw.columns:
+            df = raw[['Close']].copy()
+            df.columns = [tickers[0]]
+        else:
+            df = raw
+    else:
+        df = raw.to_frame()
+
+    if isinstance(df, pd.Series):
+        df = df.to_frame()
+
+    try:
+        if hasattr(df.index, 'tz') and df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+    except Exception:
+        pass
+    return df
+
+
+def download_close_prices(tickers, start, end) -> pd.DataFrame:
+    """캐시된 종가 다운로드 래퍼. start/end 는 date·datetime·문자열 모두 허용."""
+    def _s(x):
+        try:
+            return x.strftime('%Y-%m-%d')
+        except Exception:
+            return str(x)[:10]
+    return _download_close_cached(tuple(tickers), _s(start), _s(end))
 
 # ======================================================
 # ETF Collector
@@ -561,239 +764,58 @@ def render_news_table(df: pd.DataFrame):
 # ======================================================
 
 def get_analyst_report_data(ticker_syms: list) -> pd.DataFrame:
+    """애널리스트 등급·목표주가 표.
+    fetch_fundamentals(캐시 + curl_cffi 세션 + 다중 엔드포인트)를 사용해
+    Streamlit Cloud 에서 .info 가 차단되어도 값이 채워지도록 한다."""
     rows = []
-    
-    for idx, sym in enumerate(ticker_syms):
-        data = {
-            'Ticker': sym,
-            '종목명': 'N/A',
-            '등급 점수': None,
-            '등급': 'N/A',
-            '목표주가': None,
-            '현재가': None,
-            '상승여력(%)': None,
-        }
-        
-        success = False
-        for attempt in range(5): 
+    for sym in ticker_syms:
+        f = fetch_fundamentals(sym)
+        cur = f.get('currentPrice')
+        tgt = f.get('targetMeanPrice')
+        upside = None
+        if cur and tgt and cur > 0:
             try:
-                ticker_obj = yf.Ticker(sym)
-                
-
-                try:
-                    info = ticker_obj.info
-                except:
-                    info = {}
-                
-                if not info:
-                    wait_time = 1 + (attempt * 1.5)
-                    time.sleep(wait_time)
-                    continue
-                
-                current_px = None
-                for field in ['currentPrice', 'regularMarketPrice', 'bid', 'ask', 
-                             'previousClose', 'open', 'dayHigh']:
-                    try:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0:
-                            current_px = float(val)
-                            break
-                    except:
-                        continue
-                
-                if not current_px:
-                    try:
-                        hist = ticker_obj.history(period='1d')
-                        if not hist.empty:
-                            current_px = float(hist['Close'].iloc[-1])
-                    except:
-                        pass
-                
-                target_px = None
-                for field in ['targetMeanPrice', 'targetPrice', 'targetMedianPrice']:
-                    try:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0:
-                            target_px = float(val)
-                            break
-                    except:
-                        continue
-                
-                rec_mean = None
-                try:
-                    rec_mean = info.get('recommendationMean')
-                    if rec_mean and isinstance(rec_mean, (int, float)):
-                        rec_mean = float(rec_mean)
-                    else:
-                        rec_mean = None
-                except:
-                    rec_mean = None
-                
-                rec_key = 'N/A'
-                try:
-                    rec_str = info.get('recommendationKey', 'none')
-                    if rec_str and rec_str != 'none':
-                        rec_key = str(rec_str).capitalize()
-                except:
-                    pass
-                
-                try:
-                    short_name = info.get('shortName') or info.get('longName') or sym
-                    short_name = str(short_name) if short_name else sym
-                except:
-                    short_name = sym
-                
+                upside = ((float(tgt) / float(cur)) - 1) * 100
+            except Exception:
                 upside = None
-                if target_px and current_px and float(current_px) > 0:
-                    try:
-                        upside = ((float(target_px) / float(current_px)) - 1) * 100
-                    except:
-                        pass
-                
-                data = {
-                    'Ticker': sym,
-                    '종목명': short_name,
-                    '등급 점수': rec_mean,
-                    '등급': rec_key,
-                    '목표주가': target_px,
-                    '현재가': current_px,
-                    '상승여력(%)': upside,
-                }
-                success = True
-                break
-                
-            except Exception as e:
-                wait_time = 1.5 + (attempt * 1.0)
-                if attempt < 4:
-                    time.sleep(wait_time)
-                continue
-        
-        rows.append(data)
-        
-        if (idx + 1) % 3 == 0:
-            remaining = len(ticker_syms) - idx - 1
-            if remaining > 0:
-                time.sleep(0.5)
-    
+        rows.append({
+            'Ticker': sym,
+            '종목명': f.get('shortName') or sym,
+            '등급 점수': f.get('recommendationMean'),
+            '등급': f.get('recommendationKey') or 'N/A',
+            '목표주가': tgt,
+            '현재가': cur,
+            '상승여력(%)': upside,
+        })
+
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', '등급 점수', '등급', '목표주가', '현재가', '상승여력(%)']]
 
 
 def get_valuation_eps_table(ticker_syms: list) -> pd.DataFrame:
-
+    """밸류에이션·EPS 표. fetch_fundamentals 캐시를 공유하므로
+    애널리스트 표에서 이미 조회한 티커는 추가 네트워크 호출 없이 채워진다."""
     rows = []
-    
-    for idx, sym in enumerate(ticker_syms):
-        data = {
-            'Ticker': sym,
-            '종목명': 'N/A',
-            'Trailing PE': None,
-            'Forward PE': None,
-            'Trailing EPS': None,
-            'Forward EPS': None,
-            'EPS 상승률(%)': None,
-        }
-        
-        success = False
-        for attempt in range(5): 
+    for sym in ticker_syms:
+        f = fetch_fundamentals(sym)
+        t_eps = f.get('trailingEps')
+        f_eps = f.get('forwardEps')
+        eps_growth = None
+        if t_eps and f_eps and float(t_eps) != 0:
             try:
-                ticker_obj = yf.Ticker(sym)
-                
-                try:
-                    info = ticker_obj.info
-                except:
-                    info = {}
-                
-                if not info:
-                    wait_time = 1 + (attempt * 1.5)
-                    time.sleep(wait_time)
-                    continue
-                
-
-                trailing_pe = None
-                for field in ['trailingPE', 'peRatio', 'trailingPegRatio']:
-                    try:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0 and val < 500:
-                            trailing_pe = float(val)
-                            break
-                    except:
-                        continue
-                
-
-                forward_pe = None
-                for field in ['forwardPE', 'forwardPEG', 'forwardPegRatio']:
-                    try:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)) and val > 0 and val < 500:
-                            forward_pe = float(val)
-                            break
-                    except:
-                        continue
-                
-
-                t_eps = None
-                for field in ['trailingEps', 'epsTrailingTwelveMonths', 'eps', 'lastEps']:
-                    try:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)):
-                            t_eps = float(val)
-                            break
-                    except:
-                        continue
-                
-
-                f_eps = None
-                for field in ['forwardEps', 'epsForward', 'forwardEPS']:
-                    try:
-                        val = info.get(field)
-                        if val and isinstance(val, (int, float)):
-                            f_eps = float(val)
-                            break
-                    except:
-                        continue
-                
-
+                eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
+            except Exception:
                 eps_growth = None
-                if t_eps and f_eps and isinstance(t_eps, (int, float)) and isinstance(f_eps, (int, float)):
-                    try:
-                        if float(t_eps) != 0:
-                            eps_growth = ((float(f_eps) / float(t_eps)) - 1) * 100
-                    except:
-                        pass
-                
+        rows.append({
+            'Ticker': sym,
+            '종목명': f.get('shortName') or sym,
+            'Trailing PE': f.get('trailingPE'),
+            'Forward PE': f.get('forwardPE'),
+            'Trailing EPS': t_eps,
+            'Forward EPS': f_eps,
+            'EPS 상승률(%)': eps_growth,
+        })
 
-                try:
-                    short_name = info.get('shortName') or info.get('longName') or sym
-                    short_name = str(short_name) if short_name else sym
-                except:
-                    short_name = sym
-                
-                data = {
-                    'Ticker': sym,
-                    '종목명': short_name,
-                    'Trailing PE': trailing_pe,
-                    'Forward PE': forward_pe,
-                    'Trailing EPS': t_eps,
-                    'Forward EPS': f_eps,
-                    'EPS 상승률(%)': eps_growth,
-                }
-                success = True
-                break
-                
-            except Exception as e:
-                wait_time = 1.5 + (attempt * 1.0)
-                if attempt < 4:
-                    time.sleep(wait_time)
-                continue
-        
-        rows.append(data)
-        
-        if (idx + 1) % 3 == 0:
-            remaining = len(ticker_syms) - idx - 1
-            if remaining > 0:
-                time.sleep(0.5)
-    
     df = pd.DataFrame(rows)
     return df[['Ticker', '종목명', 'Trailing PE', 'Forward PE', 'Trailing EPS', 'Forward EPS', 'EPS 상승률(%)']]
 
@@ -818,18 +840,12 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     end = ref_date + timedelta(days=1)
 
     try:
-        raw = yf.download(tickers, start=start, end=end, progress=False)
-        if isinstance(raw, pd.DataFrame):
-            df = raw['Close']
-        else:
-            df = raw
-        if isinstance(df, pd.Series):
-            df = df.to_frame()
-        df = df.ffill().dropna(how='all')[tickers]
-        
-        
-        if hasattr(df.index, 'tz') and df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+        df = download_close_prices(tickers, start, end)
+        if df.empty:
+            st.error("데이터 다운로드 실패: 가격 데이터를 가져오지 못했습니다.")
+            return pd.DataFrame()
+        keep = [t for t in tickers if t in df.columns]
+        df = df.ffill().dropna(how='all')[keep]
     except Exception as e:
         st.error(f"데이터 다운로드 실패: {str(e)}")
         return pd.DataFrame()
@@ -859,6 +875,12 @@ def get_perf_table_improved(label2ticker, ref_date=None):
     results = []
     for label, ticker in label2ticker.items():
         row = {'자산명': label}
+        if ticker not in df.columns:
+            row['현재값'] = np.nan
+            for pk in periods:
+                row[pk] = np.nan
+            results.append(row)
+            continue
         series = df[ticker].dropna()
         if last_idx not in series.index or len(series) == 0:
             row['현재값'] = np.nan
@@ -1101,6 +1123,51 @@ def plot_maximum_drawdown(prices_df, asset_name):
         return go.Figure()
 
 
+def plot_correlation_heatmap(prices_data, period_label=""):
+    """자산 간 일간 수익률 상관관계 히트맵 (리스크 분산/군집 파악용)."""
+    try:
+        rets = prices_data.pct_change().dropna()
+        if rets.shape[1] < 2 or rets.shape[0] < 5:
+            return None
+        corr = rets.corr()
+        fig = go.Figure(data=go.Heatmap(
+            z=corr.values,
+            x=corr.columns,
+            y=corr.index,
+            zmin=-1, zmax=1,
+            colorscale='RdBu_r',
+            zmid=0,
+            text=np.round(corr.values, 2),
+            texttemplate='%{text}',
+            textfont=dict(size=10),
+            colorbar=dict(title='ρ'),
+            hovertemplate='%{y} ↔ %{x}<br>상관계수: %{z:.2f}<extra></extra>',
+        ))
+        fig.update_layout(
+            title=f'일간 수익률 상관관계 {("· " + period_label) if period_label else ""}',
+            template='plotly_white',
+            height=max(360, 60 + len(corr) * 34),
+            margin=dict(t=50, b=40, l=40, r=20),
+            xaxis=dict(tickangle=-40),
+        )
+        return fig
+    except Exception:
+        return None
+
+
+def compute_relative_strength(prices_data):
+    """기간 내 상대강도(정규화 누적성과) 랭킹 테이블 — 누가 강했나 한눈에."""
+    try:
+        norm = prices_data / prices_data.iloc[0] * 100
+        last = norm.iloc[-1]
+        rs = (last - 100).sort_values(ascending=False)
+        out = pd.DataFrame({'자산': rs.index, '기간성과(%)': rs.values.round(2)})
+        out.insert(0, '순위', range(1, len(out) + 1))
+        return out
+    except Exception:
+        return pd.DataFrame()
+
+
 # ======================================================
 # Page 1: Market Performance
 # ======================================================
@@ -1226,29 +1293,19 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
     
     try:
         tickers = list(label2t.values())
-        prices_raw = yf.download(tickers, start=start_date, end=end_date, progress=False)
+        prices_data = download_close_prices(tickers, start_date, end_date)
+        if prices_data.empty:
+            st.error("❌ 데이터 다운로드 실패: 가격 데이터를 가져오지 못했습니다.")
+            return
 
-        if isinstance(prices_raw, pd.DataFrame):
-            prices_data = prices_raw['Close']
-        else:
-            prices_data = prices_raw.to_frame()
-
-        if isinstance(prices_data, pd.Series):
-            prices_data = prices_data.to_frame()
-
-        
-        if hasattr(prices_data.index, 'tz') and prices_data.index.tz is not None:
-            prices_data.index = prices_data.index.tz_localize(None)
-
-        
         rename_dict = {}
         for label, ticker in label2t.items():
             if ticker in prices_data.columns:
                 rename_dict[ticker] = label
-        
+
         prices_data = prices_data.rename(columns=rename_dict)
         prices_data = prices_data.ffill().dropna()
-        
+
         if prices_data.empty or len(prices_data) < 5:
             st.error("❌ 해당 기간에 충분한 데이터가 없습니다.")
             return
@@ -1287,8 +1344,8 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
     st.markdown("---")
     st.markdown(f'<h3 style="color: {TITLE_COLOR};">📊 분석 차트</h3>', unsafe_allow_html=True)
     
-    tab_mr, tab_rv, tab_rs, tab_md = st.tabs(
-        ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown"]
+    tab_mr, tab_rv, tab_rs, tab_md, tab_corr = st.tabs(
+        ["📊 Monthly Returns", "📈 Rolling Volatility", "⭐ Rolling Sharpe", "📉 Maximum Drawdown", "🔗 상관관계·상대강도"]
     )
 
     # Tab 1: Monthly Returns (+Distribution of Monthly Returns)
@@ -1425,6 +1482,34 @@ def display_chart_analysis(label2t, start_date, end_date, period_label):
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
                     cols[1].error(f"{asset2} 실패")
+
+    # Tab 5: 상관관계 + 상대강도
+    with tab_corr:
+        st.caption("기간 내 자산 간 일간 수익률 상관관계 및 상대강도 랭킹")
+        col_l, col_r = st.columns([3, 2])
+        with col_l:
+            corr_fig = plot_correlation_heatmap(prices_data, period_label)
+            if corr_fig is not None:
+                st.plotly_chart(corr_fig, use_container_width=True)
+            else:
+                st.info("상관관계를 계산할 데이터가 부족합니다.")
+        with col_r:
+            st.markdown(f'<h4 style="color: {TITLE_COLOR};">🏁 상대강도 랭킹</h4>', unsafe_allow_html=True)
+            rs_df = compute_relative_strength(prices_data)
+            if not rs_df.empty:
+                styled_rs = rs_df.style.format({'기간성과(%)': '{:+.2f}'})
+                rs_num = pd.to_numeric(rs_df['기간성과(%)'], errors='coerce')
+                if rs_num.notna().any():
+                    styled_rs = styled_rs.background_gradient(
+                        subset=['기간성과(%)'],
+                        cmap=create_transparent_YlOrBr_cmap(alpha=0.4),
+                        vmin=float(rs_num.min()), vmax=float(rs_num.max()),
+                        low=0.3, high=0.3,
+                    )
+                st.dataframe(styled_rs, use_container_width=True, hide_index=True,
+                             height=min(520, 40 + len(rs_df) * 35))
+            else:
+                st.info("상대강도를 계산할 데이터가 부족합니다.")
 
 
 # ======================================================
@@ -1688,6 +1773,329 @@ def show_page3():
 
 
 # ======================================================
+# Page 4: AI 마켓 브리핑 (Claude 기반)
+#  - 실시간 크로스에셋 성과 스냅샷 + (선택) 섹터 뉴스 감성을 모아
+#    Claude(Anthropic API)에게 한국어 마켓 브리핑을 생성하게 한다.
+#  - API 키가 없으면 규칙 기반 자동 요약으로 자연스럽게 폴백한다.
+# ======================================================
+BRIEFING_GROUPS = {
+    '주식': {
+        'S&P 500': 'SPY', '나스닥100': 'QQQ', '선진국(VEA)': 'VEA', '신흥국(VWO)': 'VWO',
+        '한국(EWY)': 'EWY', '중국(MCHI)': 'MCHI', '일본(EWJ)': 'EWJ', '유럽(VGK)': 'VGK',
+    },
+    '채권': {
+        '미국 장기국채(TLT)': 'TLT', '미국 종합채권(BND)': 'BND', 'IG 회사채(LQD)': 'LQD',
+        '하이일드(HYG)': 'HYG', '물가연동(TIP)': 'TIP',
+    },
+    '환율': {
+        '달러-원': 'KRW=X', '달러-엔': 'JPY=X', '유로-달러': 'EURUSD=X', '달러-위안': 'CNY=X',
+    },
+    '원자재·대체': {
+        '금(GLD)': 'GLD', 'WTI 원유(USO)': 'USO', '비트코인': 'BTC-USD', '이더리움': 'ETH-USD',
+    },
+    '미국 섹터': {
+        'IT(XLK)': 'XLK', '헬스케어(XLV)': 'XLV', '금융(XLF)': 'XLF', '에너지(XLE)': 'XLE',
+        '자유소비재(XLY)': 'XLY', '필수소비재(XLP)': 'XLP', '유틸리티(XLU)': 'XLU',
+    },
+}
+
+BRIEFING_SYSTEM_PROMPT = """당신은 자산운용사의 글로벌 매크로 전략가입니다. 제공된 '시장 스냅샷'(가격 변화율)과 선택적으로 제공되는 '섹터 뉴스 감성' 데이터만을 근거로, 한국어 데일리 마켓 브리핑을 작성합니다.
+
+작성 규칙:
+- 반드시 제공된 수치에만 근거할 것. 데이터에 없는 구체적 뉴스·이벤트·수치는 절대 지어내지 말 것.
+- 환율은 기준통화 대비 변화율이며, '달러-원/엔/위안'이 +이면 해당 통화 약세(달러 강세)를 의미함을 반영할 것.
+- 단정 대신 확률적·신중한 표현을 사용할 것("~로 보인다", "~가능성").
+- 아래 형식을 따를 것:
+
+## 📌 한 줄 요약
+(오늘 시장을 한 문장으로)
+
+## 🌍 자산군별 코멘트
+- 주식 / 채권 / 환율 / 원자재·대체 / 섹터 순으로 각 1~2줄, 가장 두드러진 움직임 위주.
+
+## 🔀 크로스에셋 신호
+- 주식 vs 채권, 달러 방향, 안전자산(금·국채) 흐름을 종합해 리스크온/오프를 판단.
+
+## 👀 주목 포인트
+- 데이터에서 드러난 이례적/극단적 움직임(최대 상승·하락, 섹터 쏠림 등) 2~3개.
+
+## ⚠️ 리스크 체크
+- 모니터링이 필요한 잠재 리스크 2~3개(데이터 기반 추론).
+
+마지막 줄에 "※ 본 브리핑은 가격·감성 데이터 기반 자동 분석으로 투자 자문이 아닙니다."를 반드시 포함하세요. 전체 분량은 한국어 600~900자 내외로 간결하게."""
+
+
+def _pct_change_over(series, n):
+    s = series.dropna()
+    if len(s) < 2:
+        return None
+    if len(s) <= n:
+        return (s.iloc[-1] / s.iloc[0] - 1) * 100
+    return (s.iloc[-1] / s.iloc[-1 - n] - 1) * 100
+
+
+def _ytd_change(series):
+    s = series.dropna()
+    if s.empty:
+        return None
+    try:
+        yr = s.index[-1].year
+        s_y = s[s.index >= pd.Timestamp(year=yr, month=1, day=1)]
+        if len(s_y) >= 2:
+            return (s_y.iloc[-1] / s_y.iloc[0] - 1) * 100
+    except Exception:
+        pass
+    return None
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def collect_briefing_snapshot(asof_str: str) -> dict:
+    """모든 브리핑 그룹의 1D/1W/1M/YTD 성과를 숫자로 수집(캐시). asof_str 로 일 단위 캐시."""
+    today = datetime.now().date()
+    start = today - timedelta(days=400)
+    end = today + timedelta(days=1)
+    out = {}
+    for gname, gmap in BRIEFING_GROUPS.items():
+        tickers = list(gmap.values())
+        df = download_close_prices(tickers, start, end)
+        recs = []
+        for label, tk in gmap.items():
+            if df is None or df.empty or tk not in df.columns:
+                recs.append({'자산': label, '1D': None, '1W': None, '1M': None, 'YTD': None})
+                continue
+            s = df[tk].dropna()
+            recs.append({
+                '자산': label,
+                '1D': _pct_change_over(s, 1),
+                '1W': _pct_change_over(s, 5),
+                '1M': _pct_change_over(s, 21),
+                'YTD': _ytd_change(s),
+            })
+        out[gname] = recs
+    return out
+
+
+def _snapshot_to_text(snapshot: dict) -> str:
+    asof = datetime.now().strftime('%Y-%m-%d %H:%M')
+    def fmt(v):
+        return f"{v:+.2f}" if isinstance(v, (int, float)) else "N/A"
+    lines = [
+        f"[글로벌 시장 스냅샷] 기준: {asof} KST",
+        "단위: % (가격 변화율). 환율은 기준통화 대비(+면 달러 강세/해당통화 약세). N/A=데이터 없음.",
+        "",
+    ]
+    for gname, recs in snapshot.items():
+        lines.append(f"■ {gname}")
+        for r in recs:
+            lines.append(
+                f"- {r['자산']}: 1D {fmt(r['1D'])}, 1W {fmt(r['1W'])}, 1M {fmt(r['1M'])}, YTD {fmt(r['YTD'])}"
+            )
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _optional_sector_sentiment(sector_label: str):
+    """선택한 섹터의 최근 3일 뉴스 감성을 FinBERT로 요약(텍스트, df 반환). 실패 시 (None, None)."""
+    try:
+        etf = SECTOR_ETFS[sector_label]
+        holdings = ETFCollector().get_etf_holdings(etf)
+        if not holdings:
+            return None, None
+        news = NewsCollector(days=3).collect_all(holdings, etf)
+        if not news:
+            return None, None
+        analyzed = load_analyzer().batch_analyze(news)
+        df = build_sentiment_df(analyzed)
+        if df.empty:
+            return None, None
+        agg = (df.groupby('Ticker')['Sentiment']
+                 .agg(['mean', 'count']).reset_index()
+                 .sort_values('mean', ascending=False))
+        lines = [f"[{sector_label} 섹터 뉴스 감성 — 최근 3일, FinBERT 점수 -1~+1]"]
+        for _, r in agg.iterrows():
+            lines.append(f"- {r['Ticker']}: 평균감성 {r['mean']:+.3f} ({int(r['count'])}건)")
+        return "\n".join(lines), df
+    except Exception:
+        return None, None
+
+
+def _rule_based_briefing(snapshot: dict) -> str:
+    all_assets = []
+    for g, recs in snapshot.items():
+        for r in recs:
+            if isinstance(r.get('1D'), (int, float)):
+                all_assets.append((g, r['자산'], r['1D']))
+    lines = ["#### 🧭 자동 요약 (규칙 기반 · API 키 없이 생성)"]
+    if not all_assets:
+        lines.append("- 데이터가 부족하여 요약을 생성할 수 없습니다.")
+        return "\n".join(lines)
+
+    by_1d = sorted(all_assets, key=lambda x: x[2], reverse=True)
+    gainers = by_1d[:3]
+    losers = list(reversed(by_1d[-3:]))
+    lines.append("- **상승 상위(1D):** " + ", ".join(f"{a[1]} ({a[2]:+.2f}%)" for a in gainers))
+    lines.append("- **하락 하위(1D):** " + ", ".join(f"{a[1]} ({a[2]:+.2f}%)" for a in losers))
+
+    def grp_avg(g, key='1D'):
+        vals = [r[key] for r in snapshot.get(g, []) if isinstance(r.get(key), (int, float))]
+        return sum(vals) / len(vals) if vals else None
+
+    eq, bd = grp_avg('주식'), grp_avg('채권')
+    if eq is not None and bd is not None:
+        if eq > 0 and bd <= 0:
+            risk = "주식↑·채권↓ → **리스크온(위험선호)** 성향"
+        elif eq < 0 and bd >= 0:
+            risk = "주식↓·채권↑ → **리스크오프(안전선호)** 성향"
+        else:
+            risk = "주식·채권 혼조 → 방향성 뚜렷하지 않음"
+        lines.append(f"- **크로스에셋:** 주식 평균 {eq:+.2f}%, 채권 평균 {bd:+.2f}% — {risk}")
+
+    usd_pairs = [r['1D'] for r in snapshot.get('환율', [])
+                 if r['자산'] in ('달러-원', '달러-엔', '달러-위안') and isinstance(r.get('1D'), (int, float))]
+    if usd_pairs:
+        usd_avg = sum(usd_pairs) / len(usd_pairs)
+        lines.append(f"- **달러:** 주요 통화 대비 평균 {usd_avg:+.2f}% → 달러 {'강세' if usd_avg > 0 else '약세'}")
+
+    lines.append("")
+    lines.append("> ※ 본 요약은 가격 데이터만으로 자동 생성된 것으로 투자 자문이 아닙니다.")
+    return "\n".join(lines)
+
+
+def _get_secret(name, default=None):
+    try:
+        val = st.secrets.get(name, default)
+        return val if val not in (None, "") else default
+    except Exception:
+        return default
+
+
+def _claude_briefing(user_text: str):
+    """Claude(Anthropic API) 호출 → (브리핑 텍스트, 오류메시지). 성공 시 오류메시지=None."""
+    try:
+        import anthropic
+    except Exception:
+        return None, "`anthropic` 패키지가 설치되어 있지 않습니다. requirements.txt 에 `anthropic` 을 추가하세요."
+
+    api_key = _get_secret("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None, "ANTHROPIC_API_KEY 가 설정되지 않았습니다. Streamlit Secrets 에 키를 추가하세요."
+
+    model = _get_secret("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=1800,
+            system=BRIEFING_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_text}],
+        )
+        text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+        if not text.strip():
+            return None, "Claude 응답이 비어 있습니다."
+        return text, None
+    except Exception as e:
+        return None, f"Claude API 호출 실패: {e}"
+
+
+def _render_snapshot_tables(snapshot: dict):
+    cmap = create_transparent_YlOrBr_cmap(alpha=0.4)
+    for gname, recs in snapshot.items():
+        sdf = pd.DataFrame(recs)
+        if sdf.empty:
+            continue
+        st.markdown(f"**{gname}**")
+        num_cols = [c for c in ['1D', '1W', '1M', 'YTD'] if c in sdf.columns]
+        styled = sdf.style.format({c: '{:+.2f}' for c in num_cols}, na_rep='N/A')
+        for c in num_cols:
+            vals = pd.to_numeric(sdf[c], errors='coerce')
+            if vals.notna().any():
+                styled = styled.background_gradient(
+                    subset=[c], cmap=cmap,
+                    vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3,
+                )
+        st.dataframe(styled, use_container_width=True, hide_index=True,
+                     height=min(420, 40 + len(sdf) * 35))
+
+
+def show_ai_briefing():
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">🧠 AI 마켓 브리핑</h1>', unsafe_allow_html=True)
+    st.caption("실시간 크로스에셋 성과 스냅샷(과 선택적 섹터 뉴스 감성)을 모아 Claude가 한국어 데일리 브리핑을 생성합니다.")
+
+    with st.expander("⚙️ 설정 방법 (Anthropic API 키)"):
+        st.markdown(
+            "1. `requirements.txt` 에 **`anthropic`** 추가 후 재배포\n"
+            "2. Streamlit Cloud → **Manage app → Settings → Secrets** 에 아래 추가:\n"
+            "```toml\n"
+            'ANTHROPIC_API_KEY = "sk-ant-..."\n'
+            '# 선택: 모델 변경\n'
+            'ANTHROPIC_MODEL = "claude-sonnet-4-6"\n'
+            "```\n"
+            "키가 없어도 아래 **규칙 기반 자동 요약**은 정상 동작합니다."
+        )
+
+    col1, col2 = st.columns([1, 2], vertical_alignment="center")
+    with col1:
+        include_news = st.checkbox("📰 섹터 뉴스 감성 포함 (느림)", value=False, key="ai_inc_news")
+    with col2:
+        sector_for_news = st.selectbox(
+            "감성 분석 섹터", list(SECTOR_ETFS.keys()),
+            key="ai_news_sector", disabled=not include_news,
+        )
+
+    run = st.button("🧠 브리핑 생성", type="primary", key="ai_run")
+
+    if run:
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        with st.spinner("시장 스냅샷 수집 중..."):
+            snapshot = collect_briefing_snapshot(today_str)
+
+        sentiment_text, sentiment_df = (None, None)
+        if include_news:
+            with st.spinner(f"{sector_for_news} 섹터 뉴스 감성 분석 중... (FinBERT)"):
+                sentiment_text, sentiment_df = _optional_sector_sentiment(sector_for_news)
+
+        user_text = _snapshot_to_text(snapshot)
+        if sentiment_text:
+            user_text += "\n\n" + sentiment_text
+
+        with st.spinner("Claude가 브리핑 작성 중..."):
+            briefing, err = _claude_briefing(user_text)
+
+        st.session_state['ai_briefing'] = {
+            'snapshot': snapshot,
+            'briefing': briefing,
+            'error': err,
+            'sentiment_df': sentiment_df,
+            'model': _get_secret("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+            'asof': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        }
+
+    if 'ai_briefing' not in st.session_state:
+        st.info("'🧠 브리핑 생성' 버튼을 누르면 최신 시장 데이터를 모아 브리핑을 만듭니다.")
+        return
+
+    res = st.session_state['ai_briefing']
+    snapshot = res['snapshot']
+
+    if res['briefing']:
+        st.markdown(res['briefing'])
+        st.caption(f"🤖 {res['model']} · 생성: {res['asof']}")
+    else:
+        if res.get('error'):
+            st.warning(f"AI 브리핑을 생성하지 못했습니다 → {res['error']}")
+        st.markdown(_rule_based_briefing(snapshot))
+
+    st.markdown("---")
+    with st.expander("📊 브리핑에 사용된 시장 스냅샷 보기", expanded=False):
+        _render_snapshot_tables(snapshot)
+
+    if res.get('sentiment_df') is not None and not res['sentiment_df'].empty:
+        st.markdown("---")
+        st.markdown(f'<h3 style="color: {TITLE_COLOR};">📰 섹터 뉴스 감성</h3>', unsafe_allow_html=True)
+        render_sentiment_bar_chart(res['sentiment_df'], st.session_state.get('ai_news_sector', ''))
+
+
+# ======================================================
 # Main Navigation
 # ======================================================
 with st.sidebar:
@@ -1706,7 +2114,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
-        ["📊 시장 성과", "🤖 LLM 분석", "👨‍💼 애널리스트"],
+        ["📊 시장 성과", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
         key="nav_page",
     )
     st.markdown("---")
@@ -1738,6 +2146,8 @@ with st.sidebar:
 
 if page == "📊 시장 성과":
     show_page1()
+elif page == "🧠 AI 브리핑":
+    show_ai_briefing()
 elif page == "🤖 LLM 분석":
     show_page2()
 elif page == "👨‍💼 애널리스트":
