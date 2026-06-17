@@ -1773,10 +1773,184 @@ def show_page3():
 
 
 # ======================================================
-# Page 4: AI 마켓 브리핑 (Claude 기반)
-#  - 실시간 크로스에셋 성과 스냅샷 + (선택) 섹터 뉴스 감성을 모아
-#    Claude(Anthropic API)에게 한국어 마켓 브리핑을 생성하게 한다.
-#  - API 키가 없으면 규칙 기반 자동 요약으로 자연스럽게 폴백한다.
+# 시장 국면(Regime) 데이터: 변동성·금리·시장 폭·모멘텀
+#  - 모두 Yahoo Finance 무료 데이터(^VIX, ^TNX, ^IRX)와
+#    이미 수집한 자산 시계열에서 파생한다(추가 비용/키 불필요).
+# ======================================================
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_regime_indicators(asof_str: str) -> dict:
+    """무료 데이터에서 시장 국면 지표를 수집: VIX, 미 국채 10Y/3M, 장단기 스프레드."""
+    today = datetime.now().date()
+    start = today - timedelta(days=90)
+    end = today + timedelta(days=1)
+    out = {'vix': None, 'vix_chg': None, 'us10y': None, 'us10y_chg': None,
+           'us3m': None, 'slope_10y_3m': None}
+    df = download_close_prices(['^VIX', '^TNX', '^IRX'], start, end)
+
+    def _last_prev(col):
+        if df is None or df.empty or col not in df.columns:
+            return None, None
+        s = df[col].dropna()
+        if s.empty:
+            return None, None
+        last = float(s.iloc[-1])
+        prev = float(s.iloc[-2]) if len(s) >= 2 else None
+        return last, prev
+
+    def _norm_yield(v):
+        # 야후 ^TNX/^IRX 는 보통 퍼센트(예: 4.23). 과거 ×10 표기(예: 42.3) 방어.
+        if v is None:
+            return None
+        return v / 10.0 if v > 30 else v
+
+    vix, vix_p = _last_prev('^VIX')
+    if vix is not None:
+        out['vix'] = vix
+        out['vix_chg'] = (vix - vix_p) if vix_p is not None else None
+
+    t10, t10_p = _last_prev('^TNX')
+    t10, t10_p = _norm_yield(t10), _norm_yield(t10_p)
+    if t10 is not None:
+        out['us10y'] = t10
+        out['us10y_chg'] = (t10 - t10_p) if t10_p is not None else None
+
+    t3, _ = _last_prev('^IRX')
+    t3 = _norm_yield(t3)
+    out['us3m'] = t3
+    if t10 is not None and t3 is not None:
+        out['slope_10y_3m'] = t10 - t3
+    return out
+
+
+def compute_breadth(prices_data: pd.DataFrame) -> dict:
+    """포트폴리오 유니버스의 50일·200일 이동평균 상회 비율(시장 폭/Breadth)."""
+    out = {'above_50': None, 'above_200': None, 'count_50': 0, 'count_200': 0,
+           'n50': 0, 'n200': 0}
+    try:
+        c50 = c200 = n50 = n200 = 0
+        for c in prices_data.columns:
+            s = prices_data[c].dropna()
+            if len(s) >= 50:
+                ma50 = s.rolling(50).mean().iloc[-1]
+                if pd.notna(ma50):
+                    n50 += 1
+                    if s.iloc[-1] > ma50:
+                        c50 += 1
+            if len(s) >= 200:
+                ma200 = s.rolling(200).mean().iloc[-1]
+                if pd.notna(ma200):
+                    n200 += 1
+                    if s.iloc[-1] > ma200:
+                        c200 += 1
+        out['count_50'], out['count_200'] = c50, c200
+        out['n50'], out['n200'] = n50, n200
+        out['above_50'] = (c50 / n50 * 100) if n50 else None
+        out['above_200'] = (c200 / n200 * 100) if n200 else None
+    except Exception:
+        pass
+    return out
+
+
+def _rsi(series, period: int = 14):
+    """Wilder 근사 RSI(이동평균 방식)."""
+    delta = series.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss.replace(0, np.nan)
+    return 100 - 100 / (1 + rs)
+
+
+def compute_momentum_table(label2ticker: dict, prices_data: pd.DataFrame) -> pd.DataFrame:
+    """자산별 추세·모멘텀 점검 표: 현재가, 50/200MA 대비, RSI(14), 1M, 52주 고점대비, 추세."""
+    t2label = {v: k for k, v in label2ticker.items()}
+    rows = []
+    for col in prices_data.columns:
+        s = prices_data[col].dropna()
+        if len(s) < 30:
+            continue
+        last = float(s.iloc[-1])
+        ma50 = float(s.rolling(50).mean().iloc[-1]) if len(s) >= 50 else None
+        ma200 = float(s.rolling(200).mean().iloc[-1]) if len(s) >= 200 else None
+        rsi = float(_rsi(s).iloc[-1]) if len(s) >= 15 else None
+        m1 = (last / float(s.iloc[-22]) - 1) * 100 if len(s) >= 22 else None
+        win = s.iloc[-252:] if len(s) >= 252 else s
+        hi = float(win.max()) if len(win) else None
+        from_high = (last / hi - 1) * 100 if hi else None
+        above50 = (last / ma50 - 1) * 100 if ma50 else None
+        above200 = (last / ma200 - 1) * 100 if ma200 else None
+        if ma50 and ma200:
+            trend = '강세' if (last > ma50 and last > ma200) else ('약세' if (last < ma50 and last < ma200) else '혼조')
+        elif ma50:
+            trend = '강세' if last > ma50 else '약세'
+        else:
+            trend = '—'
+        rows.append({
+            '자산': t2label.get(col, col),
+            '현재가': round(last, 2),
+            'vs50MA(%)': round(above50, 2) if above50 is not None else None,
+            'vs200MA(%)': round(above200, 2) if above200 is not None else None,
+            'RSI(14)': round(rsi, 1) if rsi is not None else None,
+            '1M(%)': round(m1, 2) if m1 is not None else None,
+            '52주고점대비(%)': round(from_high, 2) if from_high is not None else None,
+            '추세': trend,
+        })
+    return pd.DataFrame(rows)
+
+
+def _regime_to_text(reg: dict) -> str:
+    """국면 지표를 LLM/요약용 텍스트로."""
+    def f2(v, suf=''):
+        return f"{v:.2f}{suf}" if isinstance(v, (int, float)) else "N/A"
+    vix_chg = reg.get('vix_chg')
+    lines = ["[시장 국면 지표]"]
+    lines.append(f"- VIX(변동성): {f2(reg.get('vix'))} "
+                 f"(1D {('%+.2f' % vix_chg) if isinstance(vix_chg, (int, float)) else 'N/A'})")
+    lines.append(f"- 미 국채 10Y: {f2(reg.get('us10y'), '%')} / 3M: {f2(reg.get('us3m'), '%')}")
+    sl = reg.get('slope_10y_3m')
+    lines.append(f"- 장단기 스프레드(10Y-3M): {f2(sl, '%p')}"
+                 f"{' (역전)' if isinstance(sl, (int, float)) and sl < 0 else ''}")
+    return "\n".join(lines)
+
+
+def _regime_comment(reg: dict, prices) -> str:
+    """규칙 기반 국면 코멘트(키 불필요, 데이터로 계산)."""
+    parts = []
+    vix = reg.get('vix')
+    if vix is not None:
+        if vix < 15:
+            parts.append(f"VIX {vix:.1f}로 변동성이 낮아 위험선호(리스크온)에 우호적인 환경으로 보입니다.")
+        elif vix < 20:
+            parts.append(f"VIX {vix:.1f}로 변동성은 보통 수준입니다.")
+        elif vix < 30:
+            parts.append(f"VIX {vix:.1f}로 변동성이 높아져 시장 경계감이 커진 것으로 보입니다.")
+        else:
+            parts.append(f"VIX {vix:.1f}로 변동성이 매우 높아 스트레스 국면 가능성이 있습니다.")
+    slope = reg.get('slope_10y_3m')
+    if slope is not None:
+        if slope < 0:
+            parts.append(f"미 국채 장단기 금리차(10Y-3M)가 {slope:+.2f}%p로 역전되어 있어 경기 둔화 신호를 모니터링할 필요가 있습니다.")
+        else:
+            parts.append(f"장단기 금리차(10Y-3M)는 {slope:+.2f}%p로 우상향(정상) 구간입니다.")
+    if prices is not None and not getattr(prices, 'empty', True):
+        a200 = compute_breadth(prices).get('above_200')
+        if a200 is not None:
+            if a200 >= 60:
+                parts.append(f"추적 ETF의 {a200:.0f}%가 200일선 위에 있어 추세가 비교적 광범위하게 양호합니다.")
+            elif a200 >= 40:
+                parts.append(f"200일선 상회 비율이 {a200:.0f}%로 추세가 혼재되어 있습니다.")
+            else:
+                parts.append(f"200일선 상회 비율이 {a200:.0f}%에 그쳐 시장 전반의 추세가 약한 편입니다.")
+    if not parts:
+        return "_지표 데이터가 부족하여 국면 요약을 생성할 수 없습니다._"
+    return " ".join(parts)
+
+
+# ======================================================
+# Page 4: AI 마켓 브리핑 (자동 생성)
+#  - 크로스에셋 성과 스냅샷 + 시장 국면 지표(+선택 섹터 뉴스 감성)를 모아
+#    한국어 데일리 브리핑을 자동 생성한다.
+#  - 운영자가 Streamlit Secrets 에 키를 넣어두면 Claude 가 더 풍부하게 작성하고,
+#    키가 없으면 동일 데이터로 규칙 기반 자동 분석을 제공한다(모든 방문자 공통).
 # ======================================================
 BRIEFING_GROUPS = {
     '주식': {
@@ -1799,11 +1973,12 @@ BRIEFING_GROUPS = {
     },
 }
 
-BRIEFING_SYSTEM_PROMPT = """당신은 자산운용사의 글로벌 매크로 전략가입니다. 제공된 '시장 스냅샷'(가격 변화율)과 선택적으로 제공되는 '섹터 뉴스 감성' 데이터만을 근거로, 한국어 데일리 마켓 브리핑을 작성합니다.
+BRIEFING_SYSTEM_PROMPT = """당신은 자산운용사의 글로벌 매크로 전략가입니다. 제공된 '시장 스냅샷'(가격 변화율), '시장 국면 지표'(VIX·미 국채 금리·장단기 스프레드), 그리고 선택적으로 제공되는 '섹터 뉴스 감성' 데이터만을 근거로, 해외 ETF 포트폴리오를 운용하는 펀드매니저를 위한 한국어 데일리 마켓 브리핑을 작성합니다.
 
 작성 규칙:
 - 반드시 제공된 수치에만 근거할 것. 데이터에 없는 구체적 뉴스·이벤트·수치는 절대 지어내지 말 것.
 - 환율은 기준통화 대비 변화율이며, '달러-원/엔/위안'이 +이면 해당 통화 약세(달러 강세)를 의미함을 반영할 것.
+- VIX는 변동성(공포)지수로 높을수록 위험회피 성향, 장단기 금리차(10Y-3M)가 음수이면 금리 역전(경기 둔화 신호 가능성)임을 반영할 것.
 - 단정 대신 확률적·신중한 표현을 사용할 것("~로 보인다", "~가능성").
 - 아래 형식을 따를 것:
 
@@ -1813,16 +1988,19 @@ BRIEFING_SYSTEM_PROMPT = """당신은 자산운용사의 글로벌 매크로 전
 ## 🌍 자산군별 코멘트
 - 주식 / 채권 / 환율 / 원자재·대체 / 섹터 순으로 각 1~2줄, 가장 두드러진 움직임 위주.
 
+## 🌡️ 국면·리스크 지표
+- VIX 수준과 변화, 미 국채 10Y 금리, 장단기 스프레드를 종합해 현재 시장 국면을 진단.
+
 ## 🔀 크로스에셋 신호
 - 주식 vs 채권, 달러 방향, 안전자산(금·국채) 흐름을 종합해 리스크온/오프를 판단.
 
 ## 👀 주목 포인트
-- 데이터에서 드러난 이례적/극단적 움직임(최대 상승·하락, 섹터 쏠림 등) 2~3개.
+- 데이터에서 드러난 이례적/극단적 움직임(최대 상승·하락, 섹터 쏠림, 금리·변동성 급변 등) 2~3개.
 
 ## ⚠️ 리스크 체크
-- 모니터링이 필요한 잠재 리스크 2~3개(데이터 기반 추론).
+- 포트폴리오 관점에서 모니터링이 필요한 잠재 리스크 2~3개(데이터 기반 추론).
 
-마지막 줄에 "※ 본 브리핑은 가격·감성 데이터 기반 자동 분석으로 투자 자문이 아닙니다."를 반드시 포함하세요. 전체 분량은 한국어 600~900자 내외로 간결하게."""
+전체 분량은 한국어 600~900자 내외로 간결하게 작성하세요."""
 
 
 def _pct_change_over(series, n):
@@ -1956,8 +2134,6 @@ def _rule_based_briefing(snapshot: dict) -> str:
         usd_avg = sum(usd_pairs) / len(usd_pairs)
         lines.append(f"- **달러:** 주요 통화 대비 평균 {usd_avg:+.2f}% → 달러 {'강세' if usd_avg > 0 else '약세'}")
 
-    lines.append("")
-    lines.append("> ※ 본 요약은 가격 데이터만으로 자동 생성된 것으로 투자 자문이 아닙니다.")
     return "\n".join(lines)
 
 
@@ -2019,19 +2195,7 @@ def _render_snapshot_tables(snapshot: dict):
 
 def show_ai_briefing():
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">🧠 AI 마켓 브리핑</h1>', unsafe_allow_html=True)
-    st.caption("실시간 크로스에셋 성과 스냅샷(과 선택적 섹터 뉴스 감성)을 모아 Claude가 한국어 데일리 브리핑을 생성합니다.")
-
-    with st.expander("⚙️ 설정 방법 (Anthropic API 키)"):
-        st.markdown(
-            "1. `requirements.txt` 에 **`anthropic`** 추가 후 재배포\n"
-            "2. Streamlit Cloud → **Manage app → Settings → Secrets** 에 아래 추가:\n"
-            "```toml\n"
-            'ANTHROPIC_API_KEY = "sk-ant-..."\n'
-            '# 선택: 모델 변경\n'
-            'ANTHROPIC_MODEL = "claude-sonnet-4-6"\n'
-            "```\n"
-            "키가 없어도 아래 **규칙 기반 자동 요약**은 정상 동작합니다."
-        )
+    st.caption("최근 크로스에셋 성과와 시장 국면 지표(VIX·금리 등)를 종합해 한국어 데일리 마켓 브리핑을 자동 생성합니다.")
 
     col1, col2 = st.columns([1, 2], vertical_alignment="center")
     with col1:
@@ -2049,24 +2213,26 @@ def show_ai_briefing():
         with st.spinner("시장 스냅샷 수집 중..."):
             snapshot = collect_briefing_snapshot(today_str)
 
+        with st.spinner("시장 국면 지표 수집 중..."):
+            regime = fetch_regime_indicators(today_str)
+
         sentiment_text, sentiment_df = (None, None)
         if include_news:
             with st.spinner(f"{sector_for_news} 섹터 뉴스 감성 분석 중... (FinBERT)"):
                 sentiment_text, sentiment_df = _optional_sector_sentiment(sector_for_news)
 
-        user_text = _snapshot_to_text(snapshot)
+        user_text = _snapshot_to_text(snapshot) + "\n\n" + _regime_to_text(regime)
         if sentiment_text:
             user_text += "\n\n" + sentiment_text
 
-        with st.spinner("Claude가 브리핑 작성 중..."):
-            briefing, err = _claude_briefing(user_text)
+        with st.spinner("브리핑 작성 중..."):
+            briefing, _err = _claude_briefing(user_text)
 
         st.session_state['ai_briefing'] = {
             'snapshot': snapshot,
+            'regime': regime,
             'briefing': briefing,
-            'error': err,
             'sentiment_df': sentiment_df,
-            'model': _get_secret("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
             'asof': datetime.now().strftime('%Y-%m-%d %H:%M'),
         }
 
@@ -2076,14 +2242,20 @@ def show_ai_briefing():
 
     res = st.session_state['ai_briefing']
     snapshot = res['snapshot']
+    regime = res.get('regime', {})
 
-    if res['briefing']:
+    if res.get('briefing'):
+        # 운영자가 키를 연결한 경우 — Claude 가 작성한 풍부한 브리핑
         st.markdown(res['briefing'])
-        st.caption(f"🤖 {res['model']} · 생성: {res['asof']}")
+        st.caption(f"🤖 AI 코멘트 · 생성: {res['asof']}")
     else:
-        if res.get('error'):
-            st.warning(f"AI 브리핑을 생성하지 못했습니다 → {res['error']}")
+        # 키가 없을 때 — 동일 데이터로 계산하는 규칙 기반 자동 분석
         st.markdown(_rule_based_briefing(snapshot))
+        rc = _regime_comment(regime, None)
+        if rc and not rc.startswith("_지표"):
+            st.markdown("#### 🌡️ 시장 국면")
+            st.markdown(rc)
+        st.caption(f"🧭 자동 분석 · 생성: {res['asof']}")
 
     st.markdown("---")
     with st.expander("📊 브리핑에 사용된 시장 스냅샷 보기", expanded=False):
@@ -2093,6 +2265,131 @@ def show_ai_briefing():
         st.markdown("---")
         st.markdown(f'<h3 style="color: {TITLE_COLOR};">📰 섹터 뉴스 감성</h3>', unsafe_allow_html=True)
         render_sentiment_bar_chart(res['sentiment_df'], st.session_state.get('ai_news_sector', ''))
+
+
+
+# ======================================================
+# Page 5: 시장 국면 & 모멘텀 (Regime Cockpit)
+#  - 변동성(VIX)·미 국채 금리·시장 폭(Breadth)·추세 모멘텀을 한 화면에 모은
+#    ETF 포트폴리오 운용자용 리스크 점검 대시보드.
+# ======================================================
+def show_regime():
+    st.markdown(f'<h1 style="color: {TITLE_COLOR};">📡 시장 국면 & 모멘텀</h1>', unsafe_allow_html=True)
+    st.caption("변동성(VIX)·미 국채 금리·시장 폭(Breadth)·추세 모멘텀을 한 화면에서 점검합니다. (데이터: Yahoo Finance, 무료)")
+
+    run = st.button("📡 국면 점검 실행", type="primary", key="regime_run")
+    if not (run or st.session_state.get('regime_loaded')):
+        st.info("'📡 국면 점검 실행' 버튼을 누르면 변동성·금리·시장 폭·모멘텀을 한 번에 점검합니다.")
+        return
+
+    st.session_state['regime_loaded'] = True
+    today = datetime.now().date()
+    today_str = today.strftime('%Y-%m-%d')
+
+    with st.spinner("국면 지표 수집 중... (VIX·금리)"):
+        reg = fetch_regime_indicators(today_str)
+
+    # 유니버스: 지역 주식 + 섹터 + 스타일
+    universe = {}
+    universe.update(STOCK_ETFS)
+    universe.update(SECTOR_ETFS)
+    universe.update(STYLE_ETFS)
+    with st.spinner("자산 시계열 수집 중..."):
+        prices = download_close_prices(list(universe.values()),
+                                       today - timedelta(days=420), today + timedelta(days=1))
+    if prices is not None and not prices.empty:
+        keep = [t for t in universe.values() if t in prices.columns]
+        prices = prices.ffill()[keep]
+
+    # ---- 핵심 국면 지표 ----
+    st.markdown(f'<h3 style="color: {TITLE_COLOR};">🌡️ 핵심 국면 지표</h3>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+
+    vix, vix_chg = reg.get('vix'), reg.get('vix_chg')
+    if vix is not None:
+        regime_lbl = ('낮음(안정)' if vix < 15 else '보통' if vix < 20
+                      else '높음(경계)' if vix < 30 else '매우 높음(스트레스)')
+        c1.metric("VIX (변동성)", f"{vix:.1f}",
+                  f"{vix_chg:+.1f}" if vix_chg is not None else None, delta_color="inverse")
+        c1.caption(f"국면: {regime_lbl}")
+    else:
+        c1.metric("VIX (변동성)", "N/A")
+
+    t10, t10c = reg.get('us10y'), reg.get('us10y_chg')
+    if t10 is not None:
+        c2.metric("미 국채 10Y", f"{t10:.2f}%",
+                  f"{t10c * 100:+.0f}bp" if t10c is not None else None, delta_color="off")
+    else:
+        c2.metric("미 국채 10Y", "N/A")
+
+    t3 = reg.get('us3m')
+    c3.metric("미 단기 (3M)", f"{t3:.2f}%" if t3 is not None else "N/A")
+
+    slope = reg.get('slope_10y_3m')
+    if slope is not None:
+        c4.metric("장단기차 (10Y-3M)", f"{slope:+.2f}%p", "역전" if slope < 0 else None,
+                  delta_color="inverse")
+        c4.caption("⚠️ 역전 — 경기둔화 경계" if slope < 0 else "우상향(정상)")
+    else:
+        c4.metric("장단기차 (10Y-3M)", "N/A")
+
+    if prices is not None and not prices.empty:
+        # ---- 시장 폭 (Breadth) ----
+        br = compute_breadth(prices)
+        st.markdown("---")
+        st.markdown(f'<h3 style="color: {TITLE_COLOR};">📈 시장 폭 (Breadth)</h3>', unsafe_allow_html=True)
+        st.caption("추적 ETF 중 이동평균선을 상회하는 비율 — 높을수록 상승 추세가 광범위함")
+        b1, b2 = st.columns(2)
+        a50, a200 = br.get('above_50'), br.get('above_200')
+        if a50 is not None:
+            b1.metric(f"50일선 상회  ({br['count_50']}/{br['n50']})", f"{a50:.0f}%")
+            b1.progress(min(1.0, a50 / 100))
+        if a200 is not None:
+            b2.metric(f"200일선 상회  ({br['count_200']}/{br['n200']})", f"{a200:.0f}%")
+            b2.progress(min(1.0, a200 / 100))
+
+        # ---- 추세·모멘텀 점검 ----
+        st.markdown("---")
+        st.markdown(f'<h3 style="color: {TITLE_COLOR};">🚦 추세·모멘텀 점검</h3>', unsafe_allow_html=True)
+        st.caption("강세=현재가가 50·200일선 위 · 약세=둘 다 아래 · 혼조=혼재 / RSI>70 과매수·<30 과매도")
+        mom = compute_momentum_table(universe, prices)
+        if not mom.empty:
+            num_fmt = {'현재가': '{:.2f}', 'vs50MA(%)': '{:+.2f}', 'vs200MA(%)': '{:+.2f}',
+                       'RSI(14)': '{:.1f}', '1M(%)': '{:+.2f}', '52주고점대비(%)': '{:+.2f}'}
+            styled = mom.style.format(num_fmt, na_rep='N/A')
+            cmap = create_transparent_YlOrBr_cmap(alpha=0.4)
+            for col in ['vs50MA(%)', 'vs200MA(%)', '1M(%)', '52주고점대비(%)']:
+                vals = pd.to_numeric(mom[col], errors='coerce')
+                if vals.notna().any():
+                    styled = styled.background_gradient(
+                        subset=[col], cmap=cmap,
+                        vmin=float(vals.min()), vmax=float(vals.max()), low=0.3, high=0.3)
+
+            def _rsi_color(v):
+                if pd.isna(v):
+                    return ''
+                if v >= 70:
+                    return 'background-color: rgba(231,76,60,0.25)'
+                if v <= 30:
+                    return 'background-color: rgba(46,134,222,0.25)'
+                return ''
+
+            def _trend_color(v):
+                return {'강세': 'color:#1e8e3e; font-weight:600',
+                        '약세': 'color:#e74c3c; font-weight:600',
+                        '혼조': 'color:#b08900'}.get(v, '')
+
+            styled = styled.map(_rsi_color, subset=['RSI(14)'])
+            styled = styled.map(_trend_color, subset=['추세'])
+            st.dataframe(styled, use_container_width=True, hide_index=True,
+                         height=min(760, 45 + len(mom) * 35))
+    else:
+        st.warning("자산 시계열을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+
+    # ---- 국면 요약 ----
+    st.markdown("---")
+    st.markdown(f'<h3 style="color: {TITLE_COLOR};">🧭 국면 요약</h3>', unsafe_allow_html=True)
+    st.markdown(_regime_comment(reg, prices))
 
 
 # ======================================================
@@ -2114,7 +2411,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "페이지 선택",
-        ["📊 시장 성과", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
+        ["📊 시장 성과", "📡 시장 국면", "🧠 AI 브리핑", "🤖 LLM 분석", "👨‍💼 애널리스트"],
         key="nav_page",
     )
     st.markdown("---")
@@ -2146,6 +2443,8 @@ with st.sidebar:
 
 if page == "📊 시장 성과":
     show_page1()
+elif page == "📡 시장 국면":
+    show_regime()
 elif page == "🧠 AI 브리핑":
     show_ai_briefing()
 elif page == "🤖 LLM 분석":
