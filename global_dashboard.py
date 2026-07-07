@@ -2885,15 +2885,7 @@ def show_deep_analysis():
 # Main Navigation
 # ======================================================
 with st.sidebar:
-    logo_url = "https://img.inhr.co.kr/static/careerlink/DSGN/250310110803368lsi.svg"
-    st.markdown(
-        f"""
-        <div style="display: flex;">
-            <img src="{logo_url}" width="200px" style="display: block;">
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+
 
     st.markdown(f'<h1 style="color: {TITLE_COLOR};">💡 Global Market</h1>', unsafe_allow_html=True)
     st.caption("*펀드 보유 종목만 분석되도록 개발 예정")
@@ -2910,13 +2902,11 @@ with st.sidebar:
 
     st.caption(f"Last visit: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     st.divider()
-    st.caption("© 2026 KB Asset Management.")
 
     with st.sidebar.expander("📄 MIT License Details"):
         license_html = """
         <div style="font-size: 0.8rem; color: #808080; line-height: 1.5;">
             MIT License<br>
-            Copyright (c) 2026 KB Asset Management<br><br>
             Permission is hereby granted, free of charge, to any person obtaining a copy of this software and 
             associated documentation files...<br><br>
             The above copyright notice and this permission notice shall be included in all copies or 
